@@ -2,6 +2,8 @@
 
 A mobile-first productivity app that shows one item at a time. Five complete visual directions share the same workspace and behavior. The opening screen is a design gallery; choose any direction to try the app.
 
+**[Explore the five designs](https://elephant-app-gold.vercel.app/)**
+
 | Design | Direction | App route |
 | --- | --- | --- |
 | Still | Ivory, forest green, editorial typography, botanical details | `/#/still/home` |
