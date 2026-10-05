@@ -29,6 +29,7 @@ import {
   LoaderCircle,
   LogOut,
   Moon,
+  Pencil,
   Plus,
   RotateCcw,
   Scissors,
@@ -712,10 +713,24 @@ export default function App() {
                         <span />A MOMENT OF FOCUS
                       </span>
                       {current && (
-                        <DuplicateButton
-                          item={current.item}
-                          onDuplicate={() => duplicate(current.item)}
-                        />
+                        <>
+                          <button
+                            type="button"
+                            className="secondary-button focus-edit"
+                            aria-label={`Edit ${current.item.title}`}
+                            title="Edit current item"
+                            onClick={() =>
+                              setModal({ kind: "rename", item: current.item })
+                            }
+                          >
+                            <Pencil size={16} />
+                            Edit
+                          </button>
+                          <DuplicateButton
+                            item={current.item}
+                            onDuplicate={() => duplicate(current.item)}
+                          />
+                        </>
                       )}
                     </div>
                   </div>

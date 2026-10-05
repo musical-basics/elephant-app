@@ -1042,6 +1042,11 @@ button {
 .focus-tools {
   gap: 8px;
 }
+.focus-tools .focus-edit {
+  min-height: 44px;
+  padding: 9px 12px;
+  font-size: 12px;
+}
 .duplicate-item {
   flex-shrink: 0;
 }
@@ -2747,8 +2752,7 @@ button {
     font-size: 10px;
   }
   .focus-mode {
-    font-size: 6px;
-    letter-spacing: 1.3px;
+    display: none;
   }
   .focus-center {
     padding: 29px 0 36px;
