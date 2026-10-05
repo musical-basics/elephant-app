@@ -366,7 +366,14 @@ export default function App() {
     }
   }
   function duplicate(item: Item) {
-    mutate((s) => duplicateItem(s, item.id), "Item duplicated.");
+    mutate(
+      (s) => duplicateItem(s, item.id),
+      item.completedAt
+        ? item.projectId
+          ? "Copy added to the end of the project."
+          : "Copy added to the end of the master queue."
+        : "Item duplicated.",
+    );
   }
   function submitForm(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -1522,6 +1529,10 @@ export default function App() {
                                   <RotateCcw size={16} />
                                   Put back
                                 </button>
+                                <DuplicateButton
+                                  item={item}
+                                  onDuplicate={() => duplicate(item)}
+                                />
                                 <button
                                   type="button"
                                   className="icon-button subtle-delete"

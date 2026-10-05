@@ -683,14 +683,40 @@ describe('duplicating items', () => {
     expect(resolveQueue(next).at(-1)?.item.id).not.toBe('p1');
   });
 
-  it('keeps an upcoming project inactive when one of its steps is copied', () => {
-    const state: AppState = { ...createEmptyState(), projects: [project('p', 'inactive')], items: [item('p1', 'p'), item('p2', 'p')] };
+  it.each([false, true])('keeps an upcoming project inactive when its copied step is completed = %s', (completed) => {
+    const state: AppState = {
+      ...createEmptyState(),
+      projects: [project('p', 'inactive')],
+      items: [{ ...item('p1', 'p'), completedAt: completed ? timestamp : null }, item('p2', 'p')],
+    };
     const next = duplicateItem(state, 'p1');
     expect(next.projects).toBe(state.projects);
     expect(next.projects[0].status).toBe('inactive');
-    expect(next.items.map((entry) => entry.title)).toEqual(['p1', 'p1', 'p2']);
-    expect(next.items[1].completedAt).toBeNull();
+    expect(next.items.map((entry) => entry.title)).toEqual(completed ? ['p1', 'p2', 'p1'] : ['p1', 'p1', 'p2']);
+    const copy = next.items.find((entry) => !state.items.some((old) => old.id === entry.id))!;
+    expect(copy.completedAt).toBeNull();
+    expect(next.items[0]).toBe(state.items[0]);
     expect(next.queue).toHaveLength(0);
+    expect(validateImport(JSON.parse(JSON.stringify(next)))).toEqual(next);
+  });
+
+  it('appends a completed project step after every remaining step while preserving its history', () => {
+    const state = sample();
+    state.items[0] = { ...state.items[0], completedAt: timestamp, timeSpentSeconds: 330 };
+    const original = structuredClone(state);
+    const before = Date.now();
+    const next = duplicateItem(state, 'p1');
+    const copy = next.items.at(-1)!;
+    expect(copy).toMatchObject({ title: 'p1', projectId: 'p', completedAt: null });
+    expect(copy.id).not.toBe('p1');
+    expect(Date.parse(copy.createdAt)).toBeGreaterThanOrEqual(before);
+    expect(copy).not.toHaveProperty('timeSpentSeconds');
+    expect(copy).not.toHaveProperty('deletedProjectName');
+    expect(next.items.filter((entry) => entry.projectId === 'p').map((entry) => entry.id)).toEqual(['p1', 'p2', 'p3', 'p4', copy.id]);
+    expect(next.items[0]).toBe(state.items[0]);
+    expect(next.queue).toEqual(state.queue);
+    expect(resolveQueue(next).map((entry) => entry.item.id)).toEqual(['p2', 'e1', 'e2', 'p3', 'e3', 'e4', 'p4']);
+    expect(state).toEqual(original);
     expect(validateImport(JSON.parse(JSON.stringify(next)))).toEqual(next);
   });
 
@@ -703,10 +729,10 @@ describe('duplicating items', () => {
     };
     const original = structuredClone(state);
     const next = duplicateItem(state, 'p1');
-    const copy = next.items[1];
+    const copy = next.items.at(-1)!;
     expect(copy).toMatchObject({ title: 'p1', projectId: 'p', completedAt: null });
     expect(copy.id).not.toBe('p1');
-    expect(next.items.map((entry) => entry.id)).toEqual(['p1', copy.id, 'p2', 'e1']);
+    expect(next.items.map((entry) => entry.id)).toEqual(['p1', 'p2', 'e1', copy.id]);
     expect(next.items.filter((entry) => entry.completedAt)).toEqual(state.items.filter((entry) => entry.completedAt));
     expect(next.projects[0]).toMatchObject({ status: 'active', completedAt: null });
     expect(resolveQueue(next).map((entry) => entry.item.id)).toEqual(['e1', copy.id]);
@@ -731,6 +757,33 @@ describe('duplicating items', () => {
     expect(next.queue.slice(0, state.queue.length)).toEqual(state.queue);
     expect(next.queue.at(-1)).toMatchObject({ kind: 'errand', itemId: copy.id });
     expect(resolveQueue(next).at(-1)?.item.id).toBe(copy.id);
+    expect(state).toEqual(original);
+    expect(validateImport(JSON.parse(JSON.stringify(next)))).toEqual(next);
+  });
+
+  it.each([false, true])('keeps a completed copy last when project placeholders expand, with deleted project history = %s', (deletedProject) => {
+    let state = sample();
+    state.queue = state.queue.filter((entry) => entry.id !== 'b' && entry.id !== 'c');
+    state.items.push({ ...item('finished', deletedProject ? 'old-project' : null), completedAt: timestamp, timeSpentSeconds: 330 });
+    if (deletedProject) {
+      state.projects.push(project('old-project', 'completed'));
+      state = deleteProject(state, 'old-project');
+    }
+    const original = structuredClone(state);
+    const source = state.items.at(-1)!;
+    const before = Date.now();
+    const next = duplicateItem(state, source.id);
+    const copy = next.items.at(-1)!;
+    expect(copy).toMatchObject({ title: source.title, projectId: null, completedAt: null });
+    expect(copy.id).not.toBe(source.id);
+    expect(Date.parse(copy.createdAt)).toBeGreaterThanOrEqual(before);
+    expect(copy).not.toHaveProperty('timeSpentSeconds');
+    expect(copy).not.toHaveProperty('deletedProjectName');
+    expect(next.items.find((entry) => entry.id === source.id)).toBe(source);
+    expect(next.queue.slice(0, state.queue.length)).toEqual(state.queue);
+    expect(next.queue.at(-2)).toMatchObject({ kind: 'project', projectId: 'p' });
+    expect(next.queue.at(-1)).toMatchObject({ kind: 'errand', itemId: copy.id });
+    expect(resolveQueue(next).map((entry) => entry.item.id)).toEqual(['p1', 'e1', 'e2', 'e3', 'e4', 'p2', copy.id]);
     expect(state).toEqual(original);
     expect(validateImport(JSON.parse(JSON.stringify(next)))).toEqual(next);
   });

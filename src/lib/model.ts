@@ -141,11 +141,23 @@ export function addItem(state: AppState, value: string, projectId?: string | nul
   return reprocess({ ...state, projects, items, queue });
 }
 
-/** Add an unfinished copy using the same project order and pacing as a new item. */
+/** Copy active steps in place; completed work starts fresh at the end of its list. */
 export function duplicateItem(state: AppState, itemId: string): AppState {
   const source = state.items.find((item) => item.id === itemId);
   if (!source) return state;
-  return addItem(state, source.title, source.projectId, source.projectId ? source.id : undefined);
+  if (!source.completedAt) {
+    return addItem(state, source.title, source.projectId, source.projectId ? source.id : undefined);
+  }
+  const project = source.projectId ? state.projects.find((entry) => entry.id === source.projectId) : undefined;
+  const next = addItem(state, source.title, project?.id);
+  if (project) return next;
+
+  // Adding an errand can also append project placeholders. Keep this completed
+  // item's fresh copy after those placeholders, at the very end of the queue.
+  const copy = next.items.at(-1)!;
+  const copySlot = next.queue.find((slot) => slot.kind === 'errand' && slot.itemId === copy.id)!;
+  if (next.queue.at(-1) === copySlot) return next;
+  return { ...next, queue: [...next.queue.filter((slot) => slot !== copySlot), copySlot] };
 }
 
 export function updateProject(state: AppState, projectId: string, patch: Partial<Pick<Project, 'name' | 'status' | 'dueDate'>>): AppState {

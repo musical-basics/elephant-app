@@ -3094,7 +3094,9 @@ button {
     flex: 1;
   }
   .completed-actions {
-    margin-left: 41px;
+    margin-left: auto;
+    flex-wrap: wrap;
+    flex-shrink: 1;
   }
   .completed-row strong {
     font-size: 12px;

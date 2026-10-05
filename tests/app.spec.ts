@@ -335,7 +335,7 @@ test("duplicate the focused item and project steps without changing their origin
   await page.getByRole("button", { name: /Completed!/ }).click();
   await page.goto("/#/tide/completed");
   await expect(page.getByRole("button", { name: /^Duplicate / })).toHaveCount(
-    0,
+    1,
   );
   await expect(page.locator(".completed-row")).toHaveCount(1);
   await expect(page.locator(".completed-row strong")).toHaveText(title);
