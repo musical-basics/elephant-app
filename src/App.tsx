@@ -133,6 +133,14 @@ function formatDate(value: string, includeTime = false) {
   });
 }
 
+function countCompletedToday(items: Item[]) {
+  const today = new Date().toDateString();
+  return items.filter(
+    (item) =>
+      item.completedAt && new Date(item.completedAt).toDateString() === today,
+  ).length;
+}
+
 function downloadFile(content: string, name: string, type: string) {
   const url = URL.createObjectURL(new Blob([content], { type }));
   const a = document.createElement("a");
@@ -200,10 +208,7 @@ export default function App() {
   const completedItems = state.items
     .filter((i) => i.completedAt)
     .sort((a, b) => b.completedAt!.localeCompare(a.completedAt!));
-  const completedToday = completedItems.filter(
-    (i) =>
-      new Date(i.completedAt!).toDateString() === new Date().toDateString(),
-  ).length;
+  const completedToday = countCompletedToday(completedItems);
   const activeProjects = state.projects.filter((p) => p.status === "active");
 
   useEffect(() => {
@@ -256,10 +261,15 @@ export default function App() {
       setToast("Could not start the backup download. Please try again.");
     }
   }
-  function mutate(action: (s: AppState) => AppState, message?: string) {
+  function mutate(
+    action: (s: AppState) => AppState,
+    message?: string | ((next: AppState) => string),
+  ) {
     try {
-      update(action(state));
-      if (message) setToast(message);
+      const next = action(state);
+      update(next);
+      if (message)
+        setToast(typeof message === "function" ? message(next) : message);
       return true;
     } catch (e) {
       setFormError(
@@ -272,7 +282,12 @@ export default function App() {
   }
   function finishCurrentItem() {
     if (!current) return;
-    if (mutate(completeCurrent, "One small step, done. Beautiful.")) {
+    if (
+      mutate(completeCurrent, (next) => {
+        const count = countCompletedToday(next.items);
+        return `One small step, done. ${count} ${count === 1 ? "item" : "items"} completed today.`;
+      })
+    ) {
       setCompletionCelebration(current.item.id);
       playCompletionSound();
     }
