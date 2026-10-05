@@ -25,6 +25,8 @@ A mobile-first productivity app that shows one item at a time. Five complete vis
 - JSON export/import with validation and replacement confirmation, list-specific CSV exports, and confirmed reset.
 - Browser persistence plus Supabase email-link sign-in and a private workspace for each account, with revision checks that prevent silent cross-device overwrites.
 
+To save a full backup, open **Settings → Download backup** (or **Backups & exports → Download JSON backup**). The timestamped `.json` includes all projects, items, queue order, completion history, profile/photo, and settings. Keep it outside the app. **Restore JSON backup** validates a saved file and asks before replacing the current workspace; it also supports recovery when browser data is unreadable.
+
 Priority is omitted. All projects use the same insertion threshold of **1/3**, applying the workbook's strict ready-score comparison. Empty queues seed one slot per active project. These decisions and the source workbook's inconsistent manual counts are documented in [docs/CALCULATIONS.md](docs/CALCULATIONS.md).
 
 The local workspace starts with example projects. Account workspaces start empty. All five designs edit the same workspace. Use Settings → Reset workspace for a fresh local start, or export/import to explicitly transfer local work into your account.

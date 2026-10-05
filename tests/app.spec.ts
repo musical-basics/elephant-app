@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { readFile } from "node:fs/promises";
 
 test.use({ viewport: { width: 390, height: 844 } });
 
@@ -134,6 +135,8 @@ test("projects can be created, ordered, edited, paused, and reactivated", async 
 test("master queue stays hidden until enabled, JSON export and guarded reset/import work", async ({
   page,
 }) => {
+  await page.goto("/#/ember/focus");
+  await page.getByRole("button", { name: /Completed!/ }).click();
   await page.goto("/#/ember/home");
   await expect(
     page.getByRole("button", { name: "Start working", exact: true }),
@@ -154,10 +157,24 @@ test("master queue stays hidden until enabled, JSON export and guarded reset/imp
   await expect(page.locator(".queue-row")).toHaveCount(6);
   await page.getByRole("button", { name: "Settings", exact: true }).click();
   const downloaded = page.waitForEvent("download");
-  await page.getByRole("button", { name: /Export a backup/ }).click();
+  const original = await page.evaluate(
+    () =>
+      JSON.parse(localStorage.getItem("elephant.workspace.local.v1")!).state,
+  );
+  await page.getByRole("button", { name: /Download JSON backup/ }).click();
   const download = await downloaded;
   const backupPath = await download.path();
   expect(backupPath).toBeTruthy();
+  expect(download.suggestedFilename()).toMatch(
+    /^elephant-backup-\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}-\d{3}Z\.json$/,
+  );
+  const saved = JSON.parse(await readFile(backupPath!, "utf8"));
+  expect(saved).toEqual(original);
+  expect(
+    saved.items.filter(
+      (item: { completedAt: string | null }) => item.completedAt,
+    ),
+  ).toHaveLength(1);
   await page
     .getByRole("button", { name: "Reset workspace", exact: true })
     .click();
@@ -175,6 +192,87 @@ test("master queue stays hidden until enabled, JSON export and guarded reset/imp
   await expect(
     page.getByRole("button", { name: "Start working", exact: true }),
   ).toBeVisible();
+  await page.reload();
+  await expect(
+    page.getByRole("button", { name: "Start working", exact: true }),
+  ).toBeVisible();
+  expect(
+    await page.evaluate(
+      () =>
+        JSON.parse(localStorage.getItem("elephant.workspace.local.v1")!).state,
+    ),
+  ).toEqual(original);
+});
+
+test("a downloaded JSON backup restores a corrupted browser workspace", async ({
+  page,
+}) => {
+  const key = "elephant.workspace.local.v1";
+  const damaged = '{"storageVersion":1,"state":BROKEN';
+  await page.goto("/#/still/settings");
+  const downloaded = page.waitForEvent("download");
+  await page
+    .getByRole("button", { name: "Download backup", exact: true })
+    .click();
+  const download = await downloaded;
+  const backupPath = (await download.path())!;
+  const original = JSON.parse(await readFile(backupPath, "utf8"));
+  await page.evaluate(
+    ({ key, damaged }) => localStorage.setItem(key, damaged),
+    { key, damaged },
+  );
+  await page.reload();
+  await expect(
+    page.getByRole("button", { name: "Download backup", exact: true }),
+  ).toBeDisabled();
+  await expect(
+    page.getByRole("button", { name: /Download JSON backup/ }),
+  ).toBeDisabled();
+  await page
+    .getByLabel("Import an Elephant backup")
+    .setInputFiles({
+      name: "broken.json",
+      mimeType: "application/json",
+      buffer: Buffer.from('{"version":999}'),
+    });
+  await expect(
+    page.getByRole("status").filter({ hasText: "Could not import:" }),
+  ).toBeVisible();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  expect(await page.evaluate((key) => localStorage.getItem(key), key)).toBe(
+    damaged,
+  );
+  await page.getByLabel("Import an Elephant backup").setInputFiles(backupPath);
+  await page
+    .getByRole("dialog")
+    .getByRole("button", { name: "Cancel", exact: true })
+    .click();
+  expect(await page.evaluate((key) => localStorage.getItem(key), key)).toBe(
+    damaged,
+  );
+  await page.getByLabel("Import an Elephant backup").setInputFiles(backupPath);
+  await page
+    .getByRole("button", { name: "Replace current data", exact: true })
+    .click();
+  await expect(
+    page.getByRole("button", { name: "Start working", exact: true }),
+  ).toBeVisible();
+  expect(
+    await page.evaluate(
+      (key) => JSON.parse(localStorage.getItem(key)!).state,
+      key,
+    ),
+  ).toEqual(original);
+  await page.reload();
+  await expect(
+    page.getByRole("button", { name: "Start working", exact: true }),
+  ).toBeVisible();
+  expect(
+    await page.evaluate(
+      (key) => JSON.parse(localStorage.getItem(key)!).state,
+      key,
+    ),
+  ).toEqual(original);
 });
 
 test("320px project/settings screens fit and dialogs support Escape", async ({

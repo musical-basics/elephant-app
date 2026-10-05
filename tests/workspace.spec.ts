@@ -8,7 +8,9 @@ import type { useWorkspace } from '../src/lib/useWorkspace';
 import type { AppState } from '../src/lib/model';
 
 declare global {
-  interface Window { workspace: ReturnType<typeof useWorkspace> }
+  interface Window {
+    workspace: ReturnType<typeof useWorkspace>;
+  }
 }
 
 const ACCOUNT = '10000000-0000-4000-8000-000000000001';
@@ -69,6 +71,18 @@ async function open(page: Page, url: string) {
 
 async function rename(page: Page, name: string) {
   await page.evaluate(value => window.workspace.update(state => ({ ...state, profile: { name: value } })), name);
+}
+
+async function seedCorrupt(page: Page, key: string, raw = '{broken-json') {
+  await page.addInitScript(({ key, raw }) => {
+    if (localStorage.getItem(key) === null) localStorage.setItem(key, raw);
+  }, { key, raw });
+}
+
+async function recoveryCopies(page: Page, key: string) {
+  return page.evaluate(prefix => Object.keys(localStorage)
+    .filter(key => key.startsWith(`${prefix}.recovery.`))
+    .map(key => localStorage.getItem(key)), key);
 }
 
 async function signInFixture(page: Page) {
@@ -148,6 +162,120 @@ test.describe('Workspace persistence', () => {
     await expect(rename(page, 'Must not replace saved data')).rejects.toThrow('Editing is paused');
     expect(await page.evaluate(key => localStorage.getItem(key), LOCAL_KEY)).toBe('{broken-json');
     expect(await page.evaluate(() => window.workspace.state.profile.name)).toBe('');
+    expect(await page.evaluate(() => window.workspace.recoveryNeeded)).toBe(true);
+  });
+
+  test('a valid backup restores corrupt local data and preserves the exact damaged bytes', async ({ page }) => {
+    const damaged = '\n{broken-json ☃\t';
+    const backup = { ...emptyState(), profile: { name: 'Recovered workspace' } };
+    await seedCorrupt(page, LOCAL_KEY, damaged);
+    await open(page, localUrl);
+    await page.evaluate(data => window.workspace.restoreBackup(data), backup);
+    expect(await page.evaluate(() => window.workspace.state)).toEqual(backup);
+    expect(await page.evaluate(() => window.workspace.recoveryNeeded)).toBe(false);
+    expect(await recoveryCopies(page, LOCAL_KEY)).toEqual([damaged]);
+    await page.reload();
+    await expect.poll(() => page.evaluate(() => window.workspace?.state.profile.name)).toBe('Recovered workspace');
+    expect(await page.evaluate(() => window.workspace.recoveryNeeded)).toBe(false);
+    await rename(page, 'Editing works again');
+    expect(await page.evaluate(key => JSON.parse(localStorage.getItem(key)!).state.profile.name, LOCAL_KEY)).toBe('Editing works again');
+  });
+
+  test('a malformed backup cannot mutate corrupt or healthy local data', async ({ page }) => {
+    await seedCorrupt(page, LOCAL_KEY);
+    await open(page, localUrl);
+    const malformed = { ...emptyState(), projects: [{ id: 'invalid' }] } as unknown as AppState;
+    await expect(page.evaluate(data => window.workspace.restoreBackup(data), malformed)).rejects.toThrow('Invalid backup');
+    expect(await page.evaluate(key => localStorage.getItem(key), LOCAL_KEY)).toBe('{broken-json');
+    expect(await recoveryCopies(page, LOCAL_KEY)).toEqual([]);
+    expect(await page.evaluate(() => window.workspace.recoveryNeeded)).toBe(true);
+    const healthy = { ...emptyState(), profile: { name: 'Healthy restored data' } };
+    await page.evaluate(data => window.workspace.restoreBackup(data), healthy);
+    const saved = await page.evaluate(key => localStorage.getItem(key), LOCAL_KEY);
+    await expect(page.evaluate(data => window.workspace.restoreBackup(data), malformed)).rejects.toThrow('Invalid backup');
+    expect(await page.evaluate(key => localStorage.getItem(key), LOCAL_KEY)).toBe(saved);
+    expect(await page.evaluate(() => window.workspace.state)).toEqual(healthy);
+  });
+
+  test('restore refuses to replace damaged data if the recovery copy cannot be saved', async ({ page }) => {
+    await seedCorrupt(page, LOCAL_KEY);
+    await open(page, localUrl);
+    await page.evaluate(prefix => {
+      const original = Storage.prototype.setItem;
+      Storage.prototype.setItem = function(key, value) {
+        if (key.startsWith(`${prefix}.recovery.`)) throw new DOMException('Test storage full', 'QuotaExceededError');
+        original.call(this, key, value);
+      };
+    }, LOCAL_KEY);
+    await expect(page.evaluate(data => window.workspace.restoreBackup(data), emptyState())).rejects.toThrow('Could not safely restore');
+    expect(await page.evaluate(key => localStorage.getItem(key), LOCAL_KEY)).toBe('{broken-json');
+    expect(await page.evaluate(() => window.workspace.recoveryNeeded)).toBe(true);
+    expect(await recoveryCopies(page, LOCAL_KEY)).toEqual([]);
+  });
+
+  test('corrupt account restore reads the current revision before saving the chosen backup', async ({ page }) => {
+    await signInFixture(page);
+    await seedCorrupt(page, ACCOUNT_KEY);
+    const remote = await mockCloud(page, { data: emptyState(), revision: 7 });
+    await open(page, cloudUrl);
+    const backup = { ...emptyState(), profile: { name: 'Recovered account' } };
+    await page.evaluate(data => window.workspace.restoreBackup(data), backup);
+    await expect.poll(() => remote.row?.data.profile.name).toBe('Recovered account');
+    expect(remote.writes).toEqual([{ revision: 'eq.7', name: 'Recovered account' }]);
+    expect(remote.row?.revision).toBe(8);
+    expect(await recoveryCopies(page, ACCOUNT_KEY)).toEqual(['{broken-json']);
+    expect(await page.evaluate(() => window.workspace.recoveryNeeded)).toBe(false);
+  });
+
+  test('a concurrent cloud edit cannot be overwritten by a corrupt-cache restore', async ({ page }) => {
+    await signInFixture(page);
+    await seedCorrupt(page, ACCOUNT_KEY);
+    const remote = await mockCloud(page, { data: emptyState(), revision: 7 });
+    await open(page, cloudUrl);
+    let release!: () => void;
+    remote.nextWriteGate = new Promise(resolve => { release = resolve; });
+    const backup = { ...emptyState(), profile: { name: 'Chosen backup' } };
+    await page.evaluate(data => window.workspace.restoreBackup(data), backup);
+    await expect.poll(() => remote.writes.length).toBe(1);
+    remote.row = { data: { ...emptyState(), profile: { name: 'Concurrent cloud edit' } }, revision: 8 };
+    release();
+    await expect.poll(() => page.evaluate(() => window.workspace.error)).toContain('Another device changed');
+    expect(remote.row.data.profile.name).toBe('Concurrent cloud edit');
+    expect(remote.writes).toEqual([{ revision: 'eq.7', name: 'Chosen backup' }]);
+    expect(await page.evaluate(key => JSON.parse(localStorage.getItem(key)!).state, ACCOUNT_KEY)).toEqual(backup);
+    expect(await recoveryCopies(page, ACCOUNT_KEY)).toEqual(['{broken-json']);
+  });
+
+  test('failed cloud verification leaves corrupt data untouched during restore', async ({ page }) => {
+    await signInFixture(page);
+    await seedCorrupt(page, ACCOUNT_KEY);
+    const remote = await mockCloud(page, { data: emptyState(), revision: 7 });
+    remote.failReads = true;
+    await open(page, cloudUrl);
+    await expect(page.evaluate(data => window.workspace.restoreBackup(data), emptyState())).rejects.toThrow('Could not check the cloud workspace');
+    expect(remote.writes).toEqual([]);
+    expect(remote.row).toEqual({ data: emptyState(), revision: 7 });
+    expect(await page.evaluate(key => localStorage.getItem(key), ACCOUNT_KEY)).toBe('{broken-json');
+    expect(await recoveryCopies(page, ACCOUNT_KEY)).toEqual([]);
+    expect(await page.evaluate(() => window.workspace.recoveryNeeded)).toBe(true);
+  });
+
+  test('browser cache permission errors do not block cloud loading or saving', async ({ page }) => {
+    await signInFixture(page);
+    await page.addInitScript(key => {
+      const original = Storage.prototype.getItem;
+      Storage.prototype.getItem = function(name) {
+        if (name === key) throw new DOMException('Test cache access denied', 'SecurityError');
+        return original.call(this, name);
+      };
+    }, ACCOUNT_KEY);
+    const remote = await mockCloud(page, { data: { ...emptyState(), profile: { name: 'Available in cloud' } }, revision: 3 });
+    await open(page, cloudUrl);
+    expect(await page.evaluate(() => window.workspace.state.profile.name)).toBe('Available in cloud');
+    expect(await page.evaluate(() => window.workspace.recoveryNeeded)).toBe(false);
+    await rename(page, 'Cloud edit without browser cache');
+    await expect.poll(() => remote.row?.data.profile.name).toBe('Cloud edit without browser cache');
+    expect(remote.row?.revision).toBe(4);
   });
 
   test('new accounts start empty and keep local sample data separate', async ({ page }) => {

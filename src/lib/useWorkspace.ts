@@ -34,6 +34,7 @@ type Scope = Cache & {
 type NextState = AppState | ((state: AppState) => AppState);
 type Actions = {
   update: (next: NextState) => void;
+  restoreBackup: (data: AppState) => Promise<void>;
   retrySync: () => void;
   signIn: (email: string) => Promise<void>;
   signOut: () => Promise<void>;
@@ -92,7 +93,7 @@ function readScope(userId: string | null): Scope {
     scope.storageError = 'Browser storage is unavailable. Keep this tab open and export your work; edits may not survive a reload.';
     return scope;
   }
-  if (!scope.raw) return scope;
+  if (scope.raw === null) return scope;
   try {
     const cache = JSON.parse(scope.raw) as Cache;
     if (cache.storageVersion !== 1 || typeof cache.dirty !== 'boolean'
@@ -105,7 +106,7 @@ function readScope(userId: string | null): Scope {
   } catch {
     scope.state = createEmptyState();
     scope.corrupt = true;
-    scope.storageError = 'Saved browser data could not be read and has been left untouched. Editing is paused to protect it. Recover your saved data before starting a new workspace.';
+    scope.storageError = 'Saved browser data could not be read and has been left untouched. Editing is paused to protect it. You can restore a previously downloaded JSON backup in Settings.';
   }
   return scope;
 }
@@ -113,6 +114,8 @@ function readScope(userId: string | null): Scope {
 export function useWorkspace(): {
   state: AppState;
   update: (next: NextState) => void;
+  restoreBackup: (data: AppState) => Promise<void>;
+  recoveryNeeded: boolean;
   ready: boolean;
   mode: 'local' | 'cloud';
   syncStatus: string;
@@ -125,6 +128,7 @@ export function useWorkspace(): {
 } {
   const [state, setState] = useState<AppState>(createDemoState);
   const [ready, setReady] = useState(false);
+  const [recoveryNeeded, setRecoveryNeeded] = useState(false);
   const [mode, setMode] = useState<'local' | 'cloud'>('local');
   const [syncStatus, setSyncStatus] = useState('Loading workspace…');
   const [error, setError] = useState<string | null>(configuration.error);
@@ -299,6 +303,7 @@ export function useWorkspace(): {
       const scope = current;
       setMode(userId ? 'cloud' : 'local');
       setState(scope.state);
+      setRecoveryNeeded(scope.corrupt);
       setReady(!userId || scope.corrupt);
       setError(scope.storageError || configuration.error);
       if (scope.corrupt) setSyncStatus('Recovery needed · editing paused');
@@ -326,6 +331,78 @@ export function useWorkspace(): {
         setSyncStatus(scope.storageError ? 'Saving · browser backup unavailable' : 'Saved on device · cloud pending');
         if (scope.timer) clearTimeout(scope.timer);
         scope.timer = setTimeout(() => { void saveCloud(scope); }, SAVE_DELAY);
+      },
+      async restoreBackup(data) {
+        const restored = validateImport(data);
+        const scope = current;
+        if (!scope) throw new Error('Your workspace is still loading. Please try again in a moment.');
+        if (!scope.corrupt) {
+          actions.current!.update(restored);
+          return;
+        }
+        if (scope.loading) throw new Error('A backup restore is already in progress. Please wait.');
+        scope.loading = true;
+        setSyncStatus('Restoring backup…');
+        try {
+          let revision: number | null = null;
+          if (scope.userId) {
+            if (!client) throw new Error('Could not connect to your account. Your saved data has not been changed.');
+            const pending = request(scope);
+            try {
+              const result = await client.from('elephant_workspaces').select('revision')
+                .eq('user_id', scope.userId).abortSignal(pending.signal).maybeSingle();
+              if (!isCurrent(scope)) throw new Error('Your account changed before the restore finished. Please restore the backup again in the intended account.');
+              if (result.error) throw new Error('Could not check the cloud workspace. Your saved data has not been changed. Check your connection and try restoring again.');
+              revision = result.data ? result.data.revision as number : null;
+              if (revision !== null && (!Number.isSafeInteger(revision) || revision < 1)) {
+                throw new Error('The cloud workspace could not be verified. Your saved data has not been changed.');
+              }
+            } finally {
+              pending.finish();
+            }
+          }
+          if (!isCurrent(scope)) throw new Error('Your account changed before the restore finished. Please restore the backup again in the intended account.');
+          let raw: string;
+          try {
+            const damaged = localStorage.getItem(scope.key);
+            if (damaged !== scope.raw) {
+              throw new Error('Saved data changed in another tab. Close the other tab and reload before restoring a backup.');
+            }
+            if (damaged !== null) {
+              const recoveryKey = `${scope.key}.recovery.${crypto.randomUUID()}`;
+              localStorage.setItem(recoveryKey, damaged);
+              if (localStorage.getItem(recoveryKey) !== damaged) throw new Error('The original saved data could not be preserved.');
+            }
+            const cache: Cache = { storageVersion: 1, state: restored, revision, dirty: Boolean(scope.userId) };
+            raw = JSON.stringify(cache);
+            if (localStorage.getItem(scope.key) !== damaged) throw new Error('Saved data changed in another tab.');
+            localStorage.setItem(scope.key, raw);
+          } catch (failure) {
+            throw new Error(`Could not safely restore the backup. Your original data has been kept. Check browser storage permissions or free up space, then try again. ${message(failure)}`);
+          }
+          scope.state = restored;
+          scope.revision = revision;
+          scope.raw = raw;
+          scope.dirty = Boolean(scope.userId);
+          scope.loaded = true;
+          scope.corrupt = false;
+          scope.conflict = false;
+          scope.cacheConflict = false;
+          scope.storageError = null;
+          setState(restored);
+          setRecoveryNeeded(false);
+          setError(configuration.error);
+        } catch (failure) {
+          if (isCurrent(scope)) {
+            setError(message(failure));
+            setSyncStatus('Recovery needed · editing paused');
+          }
+          throw failure;
+        } finally {
+          scope.loading = false;
+        }
+        if (scope.userId) void saveCloud(scope);
+        else showSettled(scope);
       },
       retrySync() {
         const scope = current;
@@ -397,8 +474,12 @@ export function useWorkspace(): {
 
   const update = useCallback((next: NextState) => actions.current?.update(next), []);
   const retrySync = useCallback(() => actions.current?.retrySync(), []);
+  const restoreBackup = useCallback(async (data: AppState) => {
+    if (!actions.current) throw new Error('Your workspace is still loading. Please try again in a moment.');
+    await actions.current.restoreBackup(data);
+  }, []);
   const signIn = useCallback(async (email: string) => { await actions.current?.signIn(email); }, []);
   const signOut = useCallback(async () => { await actions.current?.signOut(); }, []);
 
-  return { state, update, ready, mode, syncStatus, error, userEmail, configured: Boolean(configuration.client), signIn, signOut, retrySync };
+  return { state, update, restoreBackup, recoveryNeeded, ready, mode, syncStatus, error, userEmail, configured: Boolean(configuration.client), signIn, signOut, retrySync };
 }

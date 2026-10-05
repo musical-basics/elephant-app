@@ -126,8 +126,11 @@ function downloadFile(content: string, name: string, type: string) {
   const a = document.createElement("a");
   a.href = url;
   a.download = name;
+  a.hidden = true;
+  document.body.appendChild(a);
   a.click();
-  window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+  a.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 30_000);
 }
 
 export default function App() {
@@ -148,6 +151,7 @@ export default function App() {
   const avatarRef = useRef<HTMLInputElement>(null);
   const [emailStatus, setEmailStatus] = useState("");
   const [sending, setSending] = useState(false);
+  const [restoring, setRestoring] = useState(false);
   const [csvList, setCsvList] = useState<
     | "queue"
     | "completed"
@@ -196,6 +200,20 @@ export default function App() {
 
   function navigate(next: Screen, id?: string) {
     window.location.hash = `/${design.id}/${next}${id ? `/${encodeURIComponent(id)}` : ""}`;
+  }
+  function downloadBackup() {
+    if (workspace.recoveryNeeded) return;
+    try {
+      const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+      downloadFile(
+        JSON.stringify(state, null, 2),
+        `elephant-backup-${timestamp}.json`,
+        "application/json",
+      );
+      setToast("JSON backup download started. Keep the file somewhere safe.");
+    } catch {
+      setToast("Could not start the backup download. Please try again.");
+    }
   }
   function mutate(action: (s: AppState) => AppState, message?: string) {
     try {
@@ -1346,6 +1364,16 @@ export default function App() {
                     eyebrow="MAKE YOURSELF AT HOME"
                     title="Your space, your way"
                     description="A few simple things to make Elephant yours."
+                    action={
+                      <button
+                        className="primary-button compact"
+                        onClick={downloadBackup}
+                        disabled={workspace.recoveryNeeded}
+                      >
+                        <Download size={18} />
+                        Download backup
+                      </button>
+                    }
                   />
                   <div className="settings-sections">
                     <section className="settings-section">
@@ -1595,22 +1623,29 @@ export default function App() {
                       )}
                     </section>
                     <section className="settings-section">
-                      <h2>Your data belongs to you</h2>
+                      <h2>Backups & exports</h2>
+                      <p className="muted small">
+                        Keep a JSON copy somewhere safe. Restore it here if you
+                        ever need to recover your workspace.
+                      </p>
+                      {workspace.recoveryNeeded && (
+                        <p className="inline-message" role="status">
+                          Your saved workspace couldn’t be read, so backup
+                          downloads are paused. Restore a previously downloaded
+                          JSON backup below.
+                        </p>
+                      )}
                       <button
                         className="data-action"
-                        onClick={() =>
-                          downloadFile(
-                            JSON.stringify(state, null, 2),
-                            `elephant-backup-${new Date().toISOString().slice(0, 10)}.json`,
-                            "application/json",
-                          )
-                        }
+                        onClick={downloadBackup}
+                        disabled={workspace.recoveryNeeded}
                       >
                         <Download size={20} />
                         <span>
-                          <strong>Export a backup</strong>
+                          <strong>Download JSON backup</strong>
                           <small>
-                            All projects, items, history, and settings · JSON
+                            All projects, items, queue order, history, profile,
+                            and settings
                           </small>
                         </span>
                         <ArrowUpRight size={18} />
@@ -1621,7 +1656,7 @@ export default function App() {
                       >
                         <Upload size={20} />
                         <span>
-                          <strong>Import a backup</strong>
+                          <strong>Restore JSON backup</strong>
                           <small>
                             Restore your space from an Elephant JSON file
                           </small>
@@ -1763,7 +1798,9 @@ export default function App() {
                           ? "This permanently deletes the project and all its items, including completed history. This can’t be undone."
                           : undefined
           }
-          onClose={() => setModal(null)}
+          onClose={() => {
+            if (!restoring) setModal(null);
+          }}
         >
           {["item", "project", "bite", "rename"].includes(modal.kind) && (
             <form onSubmit={submitForm} className="sheet-form">
@@ -1998,25 +2035,53 @@ export default function App() {
             </div>
           )}
           {modal.kind === "import" && (
-            <div className="sheet-actions">
-              <button
-                className="secondary-button"
-                onClick={() => setModal(null)}
-              >
-                Cancel
-              </button>
-              <button
-                className="danger-button"
-                onClick={() => {
-                  update(modal.data);
-                  setModal(null);
-                  navigate("home");
-                  setToast("Your workspace has been restored.");
-                }}
-              >
-                Replace current data
-              </button>
-            </div>
+            <>
+              {formError && (
+                <p className="form-error" role="alert">
+                  {formError}
+                </p>
+              )}
+              <div className="sheet-actions">
+                <button
+                  className="secondary-button"
+                  onClick={() => setModal(null)}
+                  disabled={restoring}
+                >
+                  Cancel
+                </button>
+                <button
+                  className="danger-button"
+                  disabled={restoring}
+                  onClick={async () => {
+                    setRestoring(true);
+                    setFormError("");
+                    try {
+                      await workspace.restoreBackup(modal.data);
+                      setModal(null);
+                      navigate("home");
+                      setToast("Your workspace has been restored.");
+                    } catch (error) {
+                      setFormError(
+                        error instanceof Error
+                          ? error.message
+                          : "Could not restore this backup. Please try again.",
+                      );
+                    } finally {
+                      setRestoring(false);
+                    }
+                  }}
+                >
+                  {restoring ? (
+                    <>
+                      <LoaderCircle className="spin" size={17} />
+                      Restoring…
+                    </>
+                  ) : (
+                    "Replace current data"
+                  )}
+                </button>
+              </div>
+            </>
           )}
         </Sheet>
       )}
