@@ -43,6 +43,7 @@ import {
   Zap,
 } from "lucide-react";
 import DesignGallery from "./components/DesignGallery";
+import CompletionCelebration from "./components/CompletionCelebration";
 import FocusTimer from "./components/FocusTimer";
 import { Botanical, Elephant } from "./components/Elephant";
 import Sheet from "./components/Sheet";
@@ -69,6 +70,7 @@ import {
 import type { AppState, Item, Project } from "./lib/model";
 import { useWorkspace } from "./lib/useWorkspace";
 import { useCountdown } from "./lib/useCountdown";
+import { playCompletionSound } from "./lib/completionSound";
 
 type Screen =
   | "home"
@@ -149,6 +151,9 @@ export default function App() {
   const [modal, setModal] = useState<Modal | null>(null);
   const [formError, setFormError] = useState("");
   const [toast, setToast] = useState("");
+  const [completionCelebration, setCompletionCelebration] = useState<
+    string | null
+  >(null);
   const [projectTab, setProjectTab] = useState<"active" | "inactive">("active");
   const [sort, setSort] = useState("name");
   const [search, setSearch] = useState("");
@@ -205,6 +210,7 @@ export default function App() {
       setRoute(readRoute());
       setSelectedItem(null);
       setModal(null);
+      setCompletionCelebration(null);
       window.scrollTo(0, 0);
     };
     window.addEventListener("hashchange", handler);
@@ -223,6 +229,14 @@ export default function App() {
   useEffect(() => {
     setFormError("");
   }, [modal]);
+  useEffect(() => {
+    if (!completionCelebration) return;
+    const timeout = window.setTimeout(
+      () => setCompletionCelebration(null),
+      1800,
+    );
+    return () => window.clearTimeout(timeout);
+  }, [completionCelebration]);
 
   function navigate(next: Screen, id?: string) {
     window.location.hash = `/${design.id}/${next}${id ? `/${encodeURIComponent(id)}` : ""}`;
@@ -245,12 +259,21 @@ export default function App() {
     try {
       update(action(state));
       if (message) setToast(message);
+      return true;
     } catch (e) {
       setFormError(
         e instanceof Error
           ? e.message
           : "Something went wrong. Please try again.",
       );
+      return false;
+    }
+  }
+  function finishCurrentItem() {
+    if (!current) return;
+    if (mutate(completeCurrent, "One small step, done. Beautiful.")) {
+      setCompletionCelebration(current.item.id);
+      playCompletionSound();
     }
   }
   function submit(action: (s: AppState) => AppState, message: string) {
@@ -800,12 +823,7 @@ export default function App() {
                           </button>
                           <button
                             className="complete-button"
-                            onClick={() =>
-                              mutate(
-                                completeCurrent,
-                                "One small step, done. Beautiful.",
-                              )
-                            }
+                            onClick={finishCurrentItem}
                           >
                             <Check size={23} />
                             <span>
@@ -1939,6 +1957,9 @@ export default function App() {
         </div>
       </div>
       {nav(true)}
+      {completionCelebration && (
+        <CompletionCelebration key={completionCelebration} />
+      )}
       {toast && (
         <div className="toast" role="status">
           <Check size={17} />

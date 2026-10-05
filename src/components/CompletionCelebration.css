@@ -1,0 +1,118 @@
+.completion-celebration {
+  position: fixed;
+  inset: 0;
+  z-index: 25;
+  overflow: hidden;
+  pointer-events: none;
+}
+.celebration-confetti {
+  position: absolute;
+  top: 54%;
+  left: 50%;
+  width: 8px;
+  height: 13px;
+  border-radius: 2px;
+  opacity: 0;
+  animation: celebration-confetti 1500ms var(--delay) ease-out both;
+}
+.celebration-confetti:nth-child(3n) {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+}
+.celebration-badge {
+  position: absolute;
+  top: 35%;
+  left: 50%;
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  width: max-content;
+  max-width: calc(100% - 32px);
+  padding: 18px;
+  border: 1px solid var(--gold);
+  border-radius: 20px;
+  background: var(--surface);
+  color: var(--ink);
+  box-shadow: 0 12px 45px #0002;
+  transform: translateX(-50%);
+  animation: celebration-badge 1700ms ease both;
+}
+.celebration-check {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: var(--green);
+  color: white;
+}
+.theme-orbit .celebration-check {
+  color: #163728;
+}
+.celebration-badge strong {
+  display: block;
+  font-family: var(--heading);
+  font-size: 24px;
+  font-weight: 600;
+  line-height: 1.2;
+}
+.celebration-badge div > span {
+  display: block;
+  margin-top: 5px;
+  color: var(--muted);
+  font-size: 11px;
+}
+.celebration-sparkles {
+  position: absolute;
+  top: -11px;
+  right: 15px;
+  color: var(--gold);
+}
+@keyframes celebration-confetti {
+  0% {
+    opacity: 0;
+    transform: translate(0, 0) rotate(0) scale(0.4);
+  }
+  12% {
+    opacity: 1;
+  }
+  48% {
+    opacity: 1;
+    transform: translate(calc(var(--drift) * 0.65), var(--lift))
+      rotate(calc(var(--spin) * 0.5)) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(var(--drift), var(--fall)) rotate(var(--spin))
+      scale(0.7);
+  }
+}
+@keyframes celebration-badge {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, 14px) scale(0.85);
+  }
+  18% {
+    opacity: 1;
+    transform: translate(-50%, 0) scale(1.04);
+  }
+  28%,
+  75% {
+    opacity: 1;
+    transform: translate(-50%, 0) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -12px) scale(0.98);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .celebration-confetti {
+    display: none;
+  }
+  .celebration-badge {
+    animation: none;
+  }
+}

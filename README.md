@@ -15,6 +15,7 @@ A mobile-first productivity app that shows one item at a time. Five complete vis
 ## Included
 
 - One current item, with its project shown underneath. Completing an item timestamps it and advances the queue.
+- Completing an item plays a short chime and a brief confetti celebration. The next task stays usable immediately; reduced-motion preferences show a still celebration instead.
 - Use **Edit** on Do now to change the current item's name without moving it in the queue or interrupting its timer.
 - Use **View project** beside the current item's project name to open its details, then **Back to Do now** to return to the current item.
 - **Projects** opens a simple menu with **Add project**, **View projects**, and **View completed projects**. The project lists stay one tap away.
