@@ -3642,3 +3642,57 @@ button {
     scroll-behavior: auto !important;
   }
 }
+
+
+.project-item.project-placeholder {
+  padding: 14px;
+  border-style: dashed;
+  background: var(--soft);
+}
+.placeholder-symbol {
+  display: inline-flex;
+  color: var(--accent);
+  flex-shrink: 0;
+}
+.project-placeholder .item-title {
+  min-width: 0;
+}
+.project-placeholder .item-title strong {
+  display: block;
+  font-weight: 600;
+}
+.project-placeholder .item-title small {
+  display: block;
+  color: var(--muted);
+  font-weight: 400;
+  margin-top: 5px;
+  font-size: 11px;
+}
+.project-placeholder .icon-button {
+  flex-shrink: 0;
+  min-width: 44px;
+  min-height: 44px;
+}
+@media (max-width: 520px) {
+  .has-placeholder .focus-center {
+    padding-bottom: 24px;
+  }
+  .theme-orbit .has-placeholder .focus-frame {
+    max-width: 220px;
+    padding: 24px;
+    margin-top: 22px;
+    margin-bottom: 24px;
+  }
+  .focus-actions.placeholder-actions {
+    grid-template-columns: 1fr;
+  }
+  .focus-actions.placeholder-actions button {
+    min-height: 64px;
+  }
+  .focus-actions.placeholder-actions button span {
+    font-size: 14px;
+  }
+  .focus-actions.placeholder-actions small {
+    font-size: 10px;
+  }
+}

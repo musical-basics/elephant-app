@@ -126,7 +126,10 @@ for (const design of ["still", "ember", "orbit", "tide", "pop"]) {
     await expect(
       page.getByText("ACTIVE PROJECT", { exact: true }),
     ).toBeVisible();
-    await expect(page.locator(".project-item")).toHaveCount(0);
+    await expect(page.locator(".project-item")).toHaveCount(1);
+    await expect(page.locator(".project-placeholder")).toContainText(
+      "Blank placeholder",
+    );
     await expect(page.locator(".project-empty-note")).toContainText(
       "Add more whenever you’re ready",
     );
@@ -242,7 +245,10 @@ test("explicit project completion explains remaining items and can be cancelled 
   await expect(page.getByText("ACTIVE PROJECT", { exact: true })).toBeVisible();
   await page.reload();
   await expect(page.getByText("ACTIVE PROJECT", { exact: true })).toBeVisible();
-  await expect(page.locator(".project-item")).toHaveCount(0);
+  await expect(page.locator(".project-item")).toHaveCount(1);
+  await expect(page.locator(".project-placeholder")).toContainText(
+    "Blank placeholder",
+  );
 });
 
 for (const design of ["still", "ember", "orbit", "tide", "pop"]) {

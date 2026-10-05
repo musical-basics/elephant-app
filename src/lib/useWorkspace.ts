@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { createClient } from '@supabase/supabase-js';
 import type { Session, SupabaseClient } from '@supabase/supabase-js';
-import { createDemoState, createEmptyState, validateImport } from './model';
+import { createDemoState, createEmptyState, ensureProjectPlaceholders, validateImport } from './model';
 import type { AppState } from './model';
 import { designs } from './designs';
 
@@ -101,6 +101,8 @@ function readScope(userId: string | null): Scope {
       throw new Error('Unrecognized saved-data format.');
     }
     scope.state = validateImport(cache.state);
+    // Account caches must first reconcile with the unmodified cloud snapshot.
+    if (!userId) scope.state = ensureProjectPlaceholders(scope.state);
     scope.revision = cache.revision;
     scope.dirty = userId ? cache.dirty : false;
   } catch {
@@ -273,8 +275,15 @@ export function useWorkspace(): {
         } else {
           scope.state = remote;
           scope.revision = revision;
-          setState(remote);
         }
+        // Add new placeholder IDs only after lost-save and revision checks, so
+        // migration cannot make equal cached and remote work appear different.
+        const normalized = ensureProjectPlaceholders(scope.state);
+        if (normalized !== scope.state) {
+          scope.state = normalized;
+          scope.dirty = true;
+        }
+        setState(scope.state);
         scope.loaded = true;
         scope.conflict = false;
         persist(scope);
@@ -333,7 +342,7 @@ export function useWorkspace(): {
         scope.timer = setTimeout(() => { void saveCloud(scope); }, SAVE_DELAY);
       },
       async restoreBackup(data) {
-        const restored = validateImport(data);
+        const restored = ensureProjectPlaceholders(validateImport(data));
         const scope = current;
         if (!scope) throw new Error('Your workspace is still loading. Please try again in a moment.');
         if (!scope.corrupt) {

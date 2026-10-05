@@ -46,6 +46,34 @@ describe("daily task activity", () => {
     expect(days.reduce((sum, day) => sum + day.done, 0)).toBe(2);
   });
 
+  it("excludes empty-project placeholders until they become real tasks", () => {
+    const placeholder: Item = {
+      ...item("2026-10-04T12:00:00Z"),
+      projectId: "empty-project",
+      title: "",
+      isPlaceholder: true,
+    };
+    const today = new Date(2026, 9, 5, 18);
+    const days = getDailyActivity([placeholder], 7, today);
+    expect(days.every((day) => day.added === 0 && day.done === 0)).toBe(true);
+
+    const converted = getDailyActivity(
+      [
+        {
+          ...placeholder,
+          isPlaceholder: undefined,
+          title: "A real next step",
+          createdAt: "2026-10-05T12:00:00Z",
+          completedAt: "2026-10-05T13:00:00Z",
+        },
+      ],
+      7,
+      today,
+    );
+    expect(converted.at(-2)).toMatchObject({ added: 0, done: 0 });
+    expect(converted.at(-1)).toMatchObject({ added: 1, done: 1 });
+  });
+
   it("keeps exact local dates over spring daylight saving time", () => {
     const days = getDailyActivity(
       [

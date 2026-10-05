@@ -20,6 +20,13 @@ const API_URL = 'https://workspace-tests.supabase.co';
 const emptyState = (): AppState => ({
   version: 1, profile: { name: '' }, settings: { showMasterList: true }, projects: [], items: [], queue: [],
 });
+const legacyEmptyProjectState = (): AppState => ({
+  ...emptyState(),
+  projects: [{
+    id: 'empty-project', name: 'Keep planning', status: 'active',
+    createdAt: '2026-01-01T00:00:00.000Z', dueDate: null, completedAt: null,
+  }],
+});
 
 // Render the real hook without depending on the visual app's controls. All cloud
 // traffic is intercepted; these tests never read development credentials.
@@ -153,6 +160,63 @@ test.describe('Workspace persistence', () => {
     await page.reload();
     await expect.poll(() => page.evaluate(() => window.workspace?.state.profile.name)).toBe('My saved workspace');
     expect(await page.evaluate(() => window.workspace.mode)).toBe('local');
+  });
+
+  test('old local caches and restored backups gain one persistent empty-project placeholder', async ({ page }) => {
+    const legacy = legacyEmptyProjectState();
+    await page.addInitScript(({ key, state }) => {
+      if (localStorage.getItem(key) === null) {
+        localStorage.setItem(key, JSON.stringify({ storageVersion: 1, state, revision: null, dirty: false }));
+      }
+    }, { key: LOCAL_KEY, state: legacy });
+    await open(page, localUrl);
+    const migrated = await page.evaluate(() => window.workspace.state);
+    expect(migrated.items).toHaveLength(1);
+    expect(migrated.items[0]).toMatchObject({ projectId: 'empty-project', title: '', isPlaceholder: true, completedAt: null });
+    expect(migrated.queue).toHaveLength(1);
+    expect(migrated.queue[0]).toMatchObject({ kind: 'project', projectId: 'empty-project' });
+    await page.reload();
+    await expect.poll(() => page.evaluate(() => window.workspace?.state)).toEqual(migrated);
+
+    await page.evaluate(data => window.workspace.restoreBackup(data), legacy);
+    const restored = await page.evaluate(() => window.workspace.state);
+    expect(restored.items).toHaveLength(1);
+    expect(restored.items[0]).toMatchObject({ projectId: 'empty-project', title: '', isPlaceholder: true });
+    expect(restored.queue).toHaveLength(1);
+    expect(await page.evaluate(key => JSON.parse(localStorage.getItem(key)!).state, LOCAL_KEY)).toEqual(restored);
+  });
+
+  test('placeholder migration reconciles a lost cloud-save response before creating new IDs', async ({ page }) => {
+    const legacy = legacyEmptyProjectState();
+    await signInFixture(page);
+    await page.addInitScript(({ key, state }) => {
+      localStorage.setItem(key, JSON.stringify({ storageVersion: 1, state, revision: 7, dirty: true }));
+    }, { key: ACCOUNT_KEY, state: legacy });
+    const remote = await mockCloud(page, { data: legacy, revision: 8 });
+    await open(page, cloudUrl);
+    await expect.poll(() => remote.row?.data.items.length).toBe(1);
+    expect(remote.writes).toEqual([{ revision: 'eq.8', name: '' }]);
+    expect(remote.row?.revision).toBe(9);
+    expect(remote.row?.data.items[0]).toMatchObject({ projectId: 'empty-project', title: '', isPlaceholder: true });
+    await expect.poll(() => page.evaluate(() => window.workspace.syncStatus)).toBe('Saved to cloud');
+    expect(await page.evaluate(() => window.workspace.error)).toBeNull();
+    expect(await page.evaluate(() => window.workspace.state)).toEqual(remote.row?.data);
+    expect(await page.evaluate(key => JSON.parse(localStorage.getItem(key)!).dirty, ACCOUNT_KEY)).toBe(false);
+  });
+
+  test('placeholder migration cannot overwrite conflicting pending account work', async ({ page }) => {
+    const pending = { ...legacyEmptyProjectState(), profile: { name: 'Pending device edit' } };
+    await signInFixture(page);
+    await page.addInitScript(({ key, state }) => {
+      localStorage.setItem(key, JSON.stringify({ storageVersion: 1, state, revision: 7, dirty: true }));
+    }, { key: ACCOUNT_KEY, state: pending });
+    const remoteState = { ...legacyEmptyProjectState(), profile: { name: 'Other device edit' } };
+    const remote = await mockCloud(page, { data: remoteState, revision: 8 });
+    await open(page, cloudUrl);
+    expect(await page.evaluate(() => window.workspace.syncStatus)).toContain('conflicting changes');
+    expect(await page.evaluate(() => window.workspace.state)).toEqual(pending);
+    expect(remote.row).toEqual({ data: remoteState, revision: 8 });
+    expect(remote.writes).toHaveLength(0);
   });
 
   test('corrupt browser data remains untouched and editing pauses', async ({ page }) => {

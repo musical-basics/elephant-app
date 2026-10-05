@@ -17,6 +17,8 @@ export interface Item {
   completedAt: string | null;
   deletedProjectName?: string;
   timeSpentSeconds?: number;
+  /** An empty project's reminder to add its next step or close the project. */
+  isPlaceholder?: true;
 }
 
 export type QueueSlot =
@@ -66,7 +68,7 @@ export function createEmptyState(): AppState {
   };
 }
 
-/** A placeholder represents a project, not an item. Item order supplies its contents. */
+/** A project queue slot gets its contents from the next unfinished project item. */
 export function resolveQueue(state: AppState): ResolvedQueueEntry[] {
   const next = new Map<string, number>();
   const projects = new Map(state.projects.map((project) => [project.id, project]));
@@ -102,12 +104,30 @@ export function resolveQueue(state: AppState): ResolvedQueueEntry[] {
   return result;
 }
 
+/** Migrate empty open projects without disturbing existing items or queue order. */
+export function ensureProjectPlaceholders(state: AppState): AppState {
+  let items = state.items;
+  let queue = state.queue;
+  for (const project of state.projects) {
+    if (project.status === 'completed') continue;
+    let remaining = items.find((item) => item.projectId === project.id && !item.completedAt);
+    if (!remaining) {
+      remaining = { id: id(), projectId: project.id, title: '', createdAt: now(), completedAt: null, isPlaceholder: true };
+      items = [...items, remaining];
+    }
+    if (remaining.isPlaceholder && project.status === 'active' && !queue.some((slot) => slot.kind === 'project' && slot.projectId === project.id)) {
+      queue = [...queue, projectSlot(project.id)];
+    }
+  }
+  return items === state.items && queue === state.queue ? state : { ...state, items, queue };
+}
+
 /** Run once after add/completion. Existing slots stay in place; new slots append. */
 export function reprocess(state: AppState): AppState {
   const queue = resolveQueue(state).map(({ slot }) => slot);
   for (const project of state.projects) {
     if (project.status !== 'active') continue;
-    const remaining = state.items.filter((item) => item.projectId === project.id && !item.completedAt).length;
+    const remaining = state.items.filter((item) => item.projectId === project.id && !item.completedAt && !item.isPlaceholder).length;
     const positions = queue.flatMap((slot, index) => slot.kind === 'project' && slot.projectId === project.id ? [index + 1] : []);
     if (positions.length >= remaining) continue;
     const lastPosition = positions.at(-1);
@@ -117,13 +137,14 @@ export function reprocess(state: AppState): AppState {
       queue.push(projectSlot(project.id));
     }
   }
-  if (queue.length === state.queue.length && queue.every((slot, index) => slot === state.queue[index])) return state;
-  return { ...state, queue };
+  const next = queue.length === state.queue.length && queue.every((slot, index) => slot === state.queue[index]) ? state : { ...state, queue };
+  // The blank reminder follows any ordinary project slots appended above.
+  return ensureProjectPlaceholders(next);
 }
 
 export function addProject(state: AppState, name: string): AppState {
   const project: Project = { id: id(), name: title(name), status: 'active', createdAt: now(), dueDate: null, completedAt: null };
-  return { ...state, projects: [...state.projects, project] };
+  return ensureProjectPlaceholders({ ...state, projects: [...state.projects, project] });
 }
 
 export function addItem(state: AppState, value: string, projectId?: string | null, afterItemId?: string): AppState {
@@ -131,7 +152,7 @@ export function addItem(state: AppState, value: string, projectId?: string | nul
   const project = projectId ? state.projects.find((entry) => entry.id === projectId) : undefined;
   if (projectId && !project) return state;
   const item: Item = { id: id(), projectId: project?.id ?? null, title: text, createdAt: now(), completedAt: null };
-  const items = [...state.items];
+  const items = state.items.filter((entry) => !project || entry.projectId !== project.id || !entry.isPlaceholder);
   const after = afterItemId ? items.findIndex((entry) => entry.id === afterItemId && entry.projectId === item.projectId) : -1;
   items.splice(after === -1 ? items.length : after + 1, 0, item);
   const queue: QueueSlot[] = project ? state.queue : [...state.queue, { id: id(), kind: 'errand', itemId: item.id, createdAt: item.createdAt }];
@@ -144,7 +165,7 @@ export function addItem(state: AppState, value: string, projectId?: string | nul
 /** Copy active steps in place; completed work starts fresh at the end of its list. */
 export function duplicateItem(state: AppState, itemId: string): AppState {
   const source = state.items.find((item) => item.id === itemId);
-  if (!source) return state;
+  if (!source || source.isPlaceholder) return state;
   if (!source.completedAt) {
     return addItem(state, source.title, source.projectId, source.projectId ? source.id : undefined);
   }
@@ -154,7 +175,8 @@ export function duplicateItem(state: AppState, itemId: string): AppState {
 
   // Adding an errand can also append project placeholders. Keep this completed
   // item's fresh copy after those placeholders, at the very end of the queue.
-  const copy = next.items.at(-1)!;
+  const previousIds = new Set(state.items.map((item) => item.id));
+  const copy = next.items.find((item) => !item.projectId && !previousIds.has(item.id))!;
   const copySlot = next.queue.find((slot) => slot.kind === 'errand' && slot.itemId === copy.id)!;
   if (next.queue.at(-1) === copySlot) return next;
   return { ...next, queue: [...next.queue.filter((slot) => slot !== copySlot), copySlot] };
@@ -173,15 +195,15 @@ export function updateProject(state: AppState, projectId: string, patch: Partial
     completedAt: status === 'completed' ? project.completedAt ?? timestamp : null,
   };
   const items = status === 'completed'
-    ? state.items.map((item) => item.projectId === project.id && !item.completedAt ? { ...item, completedAt: timestamp } : item)
+    ? state.items.filter((item) => item.projectId !== project.id || !item.isPlaceholder).map((item) => item.projectId === project.id && !item.completedAt ? { ...item, completedAt: timestamp } : item)
     : state.items;
   const next = { ...state, items, projects: state.projects.map((entry) => entry.id === project.id ? updated : entry) };
-  if (status === project.status) return next;
+  if (status === project.status) return ensureProjectPlaceholders(next);
   const queue = resolveQueue(next).map(({ slot }) => slot);
   if (status === 'active' && items.some((item) => item.projectId === project.id && !item.completedAt)) {
     queue.push(projectSlot(project.id));
   }
-  return { ...next, queue };
+  return ensureProjectPlaceholders({ ...next, queue });
 }
 
 /** Remove unfinished project work while keeping completed items as named history. */
@@ -201,7 +223,12 @@ export function deleteProject(state: AppState, projectId: string): AppState {
 export function renameItem(state: AppState, itemId: string, value: string): AppState {
   const text = title(value);
   if (!state.items.some((item) => item.id === itemId)) return state;
-  return { ...state, items: state.items.map((item) => item.id === itemId ? { ...item, title: text } : item) };
+  return { ...state, items: state.items.map((item) => {
+    if (item.id !== itemId) return item;
+    const renamed = { ...item, title: text, ...(item.isPlaceholder ? { createdAt: now() } : {}) };
+    delete renamed.isPlaceholder;
+    return renamed;
+  }) };
 }
 
 export function reorderItem(state: AppState, itemId: string, direction: 'up' | 'down'): AppState {
@@ -241,9 +268,8 @@ export function moveItem(state: AppState, itemId: string, targetItemId: string):
 export function deleteItem(state: AppState, itemId: string): AppState {
   if (!state.items.some((item) => item.id === itemId)) return state;
   const next = { ...state, items: state.items.filter((item) => item.id !== itemId) };
-  // Deletion only removes invalid/excess slots; it does not run insertion or
-  // turn an empty project into a completed project.
-  return { ...next, queue: resolveQueue(next).map(({ slot }) => slot) };
+  // Deletion removes invalid/excess slots, then puts newly empty projects last.
+  return ensureProjectPlaceholders({ ...next, queue: resolveQueue(next).map(({ slot }) => slot) });
 }
 
 export function completeCurrent(state: AppState, timeSpentSeconds?: number): AppState {
@@ -251,7 +277,7 @@ export function completeCurrent(state: AppState, timeSpentSeconds?: number): App
     throw new Error('Time spent must be a nonnegative whole number of seconds.');
   }
   const current = resolveQueue(state)[0];
-  if (!current) return state;
+  if (!current || current.item.isPlaceholder) return state;
   const timestamp = now();
   const items = state.items.map((item) => {
     if (item.id !== current.item.id) return item;
@@ -274,12 +300,14 @@ export function putBackItem(state: AppState, itemId: string): AppState {
 
   const restored = { ...source, completedAt: null };
   delete restored.timeSpentSeconds;
-  const items = [...state.items];
-  items[sourceIndex] = restored;
+  const hadPlaceholder = parent && state.items.some((item) => item.projectId === parent.id && item.isPlaceholder);
+  const items = state.items.filter((item) => !parent || item.projectId !== parent.id || !item.isPlaceholder);
+  const restoredIndex = items.findIndex((item) => item.id === source.id);
+  items[restoredIndex] = restored;
   if (parent) {
     const firstRemaining = items.findIndex((item) => item.projectId === parent.id && !item.completedAt);
-    if (firstRemaining < sourceIndex) {
-      items.splice(sourceIndex, 1);
+    if (firstRemaining < restoredIndex) {
+      items.splice(restoredIndex, 1);
       items.splice(firstRemaining, 0, restored);
     }
   }
@@ -289,14 +317,15 @@ export function putBackItem(state: AppState, itemId: string): AppState {
   const slot: QueueSlot = parent
     ? projectSlot(parent.id)
     : { id: id(), kind: 'errand', itemId: source.id, createdAt: now() };
-  return { ...state, items, projects, queue: [slot, ...state.queue] };
+  const queue = hadPlaceholder ? state.queue.filter((entry) => entry.kind !== 'project' || entry.projectId !== parent.id) : state.queue;
+  return { ...state, items, projects, queue: [slot, ...queue] };
 }
 
 export function takeBite(state: AppState, firstTitle: string, remainderTitle: string): AppState {
   const first = title(firstTitle);
   const remainder = title(remainderTitle);
   const current = resolveQueue(state)[0];
-  if (!current) return state;
+  if (!current || current.item.isPlaceholder) return state;
   const index = state.items.findIndex((item) => item.id === current.item.id);
   const items = [...state.items];
   items[index] = { ...current.item, title: first };
@@ -406,8 +435,13 @@ export function validateImport(input: unknown): AppState {
   });
   const items = array(data.items, 'items').map((value): Item => {
     const item = record(value, 'item');
+    if (item.isPlaceholder !== undefined && item.isPlaceholder !== true) throw new Error('Invalid backup: item placeholder flag must be true.');
+    const isPlaceholder = item.isPlaceholder === true;
     const deletedProjectName = item.deletedProjectName === undefined ? undefined : string(item.deletedProjectName, 'deleted project name');
     const completedAt = nullableTimestamp(item.completedAt, 'item completedAt');
+    if (isPlaceholder && (item.title !== '' || completedAt || !item.projectId || deletedProjectName !== undefined || item.timeSpentSeconds !== undefined)) {
+      throw new Error('Invalid backup: a placeholder must be an unfinished blank project item.');
+    }
     const timeSpentSeconds = item.timeSpentSeconds;
     if (timeSpentSeconds !== undefined) {
       if (typeof timeSpentSeconds !== 'number' || !Number.isSafeInteger(timeSpentSeconds) || timeSpentSeconds < 0) {
@@ -415,7 +449,7 @@ export function validateImport(input: unknown): AppState {
       }
       if (!completedAt) throw new Error('Invalid backup: only completed items can have time spent.');
     }
-    return { id: string(item.id, 'item ID'), projectId: item.projectId === null ? null : string(item.projectId, 'item projectId'), title: string(item.title, 'item title'), createdAt: timestamp(item.createdAt, 'item createdAt'), completedAt, ...(deletedProjectName === undefined ? {} : { deletedProjectName }), ...(timeSpentSeconds === undefined ? {} : { timeSpentSeconds }) };
+    return { id: string(item.id, 'item ID'), projectId: item.projectId === null ? null : string(item.projectId, 'item projectId'), title: string(item.title, 'item title', isPlaceholder), createdAt: timestamp(item.createdAt, 'item createdAt'), completedAt, ...(isPlaceholder ? { isPlaceholder: true } : {}), ...(deletedProjectName === undefined ? {} : { deletedProjectName }), ...(timeSpentSeconds === undefined ? {} : { timeSpentSeconds }) };
   });
   const queue = array(data.queue, 'queue').map((value): QueueSlot => {
     const slot = record(value, 'queue slot');
@@ -434,6 +468,8 @@ export function validateImport(input: unknown): AppState {
   }
   for (const project of projects) {
     if ((project.status === 'completed') !== Boolean(project.completedAt)) throw new Error('Invalid backup: project completion date does not match its status.');
+    const unfinished = items.filter((item) => item.projectId === project.id && !item.completedAt);
+    if (unfinished.some((item) => item.isPlaceholder) && unfinished.length !== 1) throw new Error('Invalid backup: a project placeholder must be its only unfinished item.');
   }
   const avatarUrl = profile.avatarUrl === undefined ? undefined : inlineAvatar(profile.avatarUrl);
   const state: AppState = { version: 1, profile: { name: string(profile.name, 'profile name', true), ...(avatarUrl ? { avatarUrl } : {}) }, settings: { showMasterList: settings.showMasterList }, projects, items, queue };
@@ -467,7 +503,7 @@ export function exportCsv(state: AppState, list: 'queue' | 'completed' | 'active
   if (list === 'completed') items = items.filter((item) => item.completedAt);
   const rows = [
     ['Title', 'Project', 'Status', 'Created at', 'Completed at', 'Time spent (seconds)'],
-    ...items.map((item) => [item.title, (item.projectId ? projects.get(item.projectId)?.name : undefined) ?? item.deletedProjectName ?? '', item.completedAt ? 'Completed' : item.projectId && projects.get(item.projectId)?.status === 'inactive' ? 'Inactive' : 'Active', item.createdAt, item.completedAt ?? '', item.timeSpentSeconds === undefined ? '' : String(item.timeSpentSeconds)]),
+    ...items.map((item) => [item.title, (item.projectId ? projects.get(item.projectId)?.name : undefined) ?? item.deletedProjectName ?? '', item.isPlaceholder ? 'Placeholder' : item.completedAt ? 'Completed' : item.projectId && projects.get(item.projectId)?.status === 'inactive' ? 'Inactive' : 'Active', item.createdAt, item.completedAt ?? '', item.timeSpentSeconds === undefined ? '' : String(item.timeSpentSeconds)]),
   ];
   return rows.map((row) => row.map(csvCell).join(',')).join('\r\n');
 }

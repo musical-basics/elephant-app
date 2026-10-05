@@ -1,7 +1,7 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
   addItem, addProject, completeCurrent, createDemoState, createEmptyState,
-  deleteItem, deleteProject, duplicateItem, exportCsv, moveItem, putBackItem, renameItem, reorderItem, reprocess,
+  deleteItem, deleteProject, duplicateItem, ensureProjectPlaceholders, exportCsv, moveItem, putBackItem, renameItem, reorderItem, reprocess,
   resolveQueue, takeBite, updateProject, validateImport, MAX_INLINE_AVATAR_BYTES,
   type AppState, type Item, type Project, type QueueSlot,
 } from './model';
@@ -97,9 +97,12 @@ describe('equal project pacing', () => {
     expect(after.queue.slice(0, 10)).toEqual(state.queue);
   });
 
-  it('seeds all active projects but leaves inactive and empty ones out', () => {
+  it('seeds active work before empty project reminders and leaves inactive projects out', () => {
     const state: AppState = { ...createEmptyState(), projects: [project('p'), project('q'), project('r', 'inactive'), project('empty')], items: [item('p1', 'p'), item('q1', 'q'), item('r1', 'r')] };
-    expect(resolveQueue(reprocess(state)).map((entry) => entry.item.id)).toEqual(['p1', 'q1']);
+    const queued = resolveQueue(reprocess(state));
+    expect(queued.slice(0, 2).map((entry) => entry.item.id)).toEqual(['p1', 'q1']);
+    expect(queued.at(-1)?.item).toMatchObject({ projectId: 'empty', title: '', isPlaceholder: true });
+    expect(queued).toHaveLength(3);
   });
 });
 
@@ -128,7 +131,8 @@ describe('completion and project lifecycle', () => {
     expect(state.projects).toBe(originalProjects);
     expect(state.projects[0]).toMatchObject({ status: 'active', completedAt: null });
     expect(state.items[0].completedAt).toBeTruthy();
-    expect(state.queue).toHaveLength(0);
+    expect(state.queue).toHaveLength(1);
+    expect(resolveQueue(state)[0].item).toMatchObject({ title: '', isPlaceholder: true });
     expect(validateImport(JSON.parse(JSON.stringify(state)))).toEqual(state);
     state = addItem(state, 'Another small step', 'p');
     expect(state.projects[0]).toMatchObject({ status: 'active', completedAt: null });
@@ -183,8 +187,10 @@ describe('completion and project lifecycle', () => {
     const manuallyCompleted = updateProject(sample(), 'p', { status: 'completed' });
     const reopened = updateProject(manuallyCompleted, 'p', { status: 'active' });
     expect(reopened.projects[0]).toMatchObject({ status: 'active', completedAt: null });
-    expect(reopened.items).toBe(manuallyCompleted.items);
-    expect(reopened.queue).toEqual(manuallyCompleted.queue);
+    expect(reopened.items.slice(0, manuallyCompleted.items.length)).toEqual(manuallyCompleted.items);
+    expect(reopened.items.at(-1)).toMatchObject({ title: '', projectId: 'p', isPlaceholder: true });
+    expect(reopened.queue.slice(0, manuallyCompleted.queue.length)).toEqual(manuallyCompleted.queue);
+    expect(reopened.queue.at(-1)).toMatchObject({ kind: 'project', projectId: 'p' });
     const withNewItem = addItem(manuallyCompleted, 'Another small step', 'p');
     expect(withNewItem.projects[0]).toMatchObject({ status: 'active', completedAt: null });
     expect(withNewItem.items.slice(0, manuallyCompleted.items.length)).toEqual(manuallyCompleted.items);
@@ -217,9 +223,146 @@ describe('completion and project lifecycle', () => {
   it('keeps an empty project active after deleting its only item', () => {
     const state: AppState = { ...createEmptyState(), projects: [project('p')], items: [item('p1', 'p')], queue: [slot('a', 'p')] };
     const next = deleteItem(state, 'p1');
-    expect(next.queue).toHaveLength(0);
+    expect(next.queue).toHaveLength(1);
+    expect(resolveQueue(next)[0].item).toMatchObject({ title: '', isPlaceholder: true });
     expect(next.projects[0]).toMatchObject({ status: 'active', completedAt: null });
     expect(validateImport(next)).toEqual(next);
+  });
+});
+
+describe('blank reminders for empty projects', () => {
+  it('queues one blank after normal pacing when the last actual task completes', () => {
+    const state: AppState = {
+      ...createEmptyState(),
+      projects: [project('p'), project('q')],
+      items: [item('p1', 'p'), item('q1', 'q'), item('q2', 'q'), item('e1', null), item('e2', null), item('e3', null)],
+      queue: [slot('p-slot', 'p'), slot('q-slot', 'q'), errand('e1'), errand('e2'), errand('e3')],
+    };
+    const next = completeCurrent(state, 330);
+    const queued = resolveQueue(next);
+    expect(queued.slice(0, -1).map((entry) => entry.item.id)).toEqual(['q1', 'e1', 'e2', 'e3', 'q2']);
+    expect(queued.at(-1)?.item).toMatchObject({ projectId: 'p', title: '', completedAt: null, isPlaceholder: true });
+    expect(queued.at(-1)?.item).not.toHaveProperty('timeSpentSeconds');
+    expect(next.items.filter((entry) => entry.isPlaceholder)).toHaveLength(1);
+    expect(next.items.find((entry) => entry.id === 'p1')).toMatchObject({ timeSpentSeconds: 330 });
+    expect(next.projects).toBe(state.projects);
+    expect(state.items.some((entry) => entry.isPlaceholder)).toBe(false);
+    expect(ensureProjectPlaceholders(next)).toBe(next);
+    expect(validateImport(JSON.parse(JSON.stringify(next)))).toEqual(next);
+  });
+
+  it('migrates old empty active and inactive projects, ignoring completed projects', () => {
+    const state: AppState = { ...createEmptyState(), projects: [project('p'), project('q', 'inactive'), project('done', 'completed')], items: [item('e1', null)], queue: [errand('e1')] };
+    expect(validateImport(state)).toEqual(state);
+    const next = ensureProjectPlaceholders(state);
+    expect(next.items.filter((entry) => entry.isPlaceholder).map((entry) => entry.projectId)).toEqual(['p', 'q']);
+    expect(next.queue[0]).toBe(state.queue[0]);
+    expect(resolveQueue(next).map((entry) => entry.item.projectId)).toEqual([null, 'p']);
+    expect(ensureProjectPlaceholders(next)).toBe(next);
+    expect(validateImport(JSON.parse(JSON.stringify(next)))).toEqual(next);
+    const activated = updateProject(next, 'q', { status: 'active' });
+    expect(resolveQueue(activated).at(-1)?.item.projectId).toBe('q');
+    expect(activated.items).toBe(next.items);
+  });
+
+  it('gives new projects one blank and consumes it when adding the first task in its place', () => {
+    const state = addProject(addItem(createEmptyState(), 'Already queued'), 'New project');
+    const projectId = state.projects[0].id;
+    const blank = state.items.find((entry) => entry.isPlaceholder)!;
+    expect(resolveQueue(state).at(-1)?.item).toBe(blank);
+    const next = addItem(state, 'First real step', projectId, blank.id);
+    expect(next.items.some((entry) => entry.isPlaceholder)).toBe(false);
+    expect(next.items.some((entry) => entry.id === blank.id)).toBe(false);
+    expect(next.queue).toBe(state.queue);
+    expect(resolveQueue(next).at(-1)?.item.title).toBe('First real step');
+    expect(validateImport(next)).toEqual(next);
+  });
+
+  it('turns an edited blank into a task with fresh creation time and the same queue position', () => {
+    const state = ensureProjectPlaceholders({ ...createEmptyState(), projects: [project('p')] });
+    const blank = state.items[0];
+    const created = '2030-01-02T03:04:05.000Z';
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(created);
+      const next = renameItem(state, blank.id, '  Next step\nwith details  ');
+      expect(next.items[0]).toEqual({ ...blank, title: 'Next step\nwith details', createdAt: created, isPlaceholder: undefined });
+      expect(next.items[0]).not.toHaveProperty('isPlaceholder');
+      expect(next.queue).toBe(state.queue);
+      expect(state.items[0]).toBe(blank);
+      expect(validateImport(next)).toEqual(next);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('does not finish, duplicate, or split the blank as if it were real work', () => {
+    const state = addProject(createEmptyState(), 'Empty');
+    const blank = state.items[0];
+    expect(completeCurrent(state)).toBe(state);
+    expect(completeCurrent(state, 30)).toBe(state);
+    expect(duplicateItem(state, blank.id)).toBe(state);
+    expect(takeBite(state, 'First', 'Rest')).toBe(state);
+    expect(() => renameItem(state, blank.id, ' ')).toThrow(/enter a name/);
+  });
+
+  it('removes the blank when closing or deleting a project without adding false completed history', () => {
+    const history = { ...item('done', 'p'), completedAt: timestamp, timeSpentSeconds: 30 };
+    const state = ensureProjectPlaceholders({ ...createEmptyState(), projects: [project('p')], items: [history] });
+    const closed = updateProject(state, 'p', { status: 'completed' });
+    expect(closed.items).toEqual([history]);
+    expect(closed.queue).toEqual([]);
+    expect(closed.projects[0].status).toBe('completed');
+    expect(validateImport(closed)).toEqual(closed);
+    const deleted = deleteProject(state, 'p');
+    expect(deleted.items).toEqual([{ ...history, projectId: null, deletedProjectName: 'p' }]);
+    expect(deleted.queue).toEqual([]);
+    expect(validateImport(deleted)).toEqual(deleted);
+  });
+
+  it('replaces the blank with a put-back task at the front without leaving excess project slots', () => {
+    const source = { ...item('done', 'p'), completedAt: timestamp, timeSpentSeconds: 30 };
+    const state = ensureProjectPlaceholders({ ...createEmptyState(), projects: [project('p')], items: [source, item('e1', null)], queue: [errand('e1')] });
+    const restored = putBackItem(state, source.id);
+    expect(resolveQueue(restored).map((entry) => entry.item.id)).toEqual(['done', 'e1']);
+    expect(restored.items.some((entry) => entry.isPlaceholder)).toBe(false);
+    expect(restored.items.find((entry) => entry.id === source.id)).not.toHaveProperty('timeSpentSeconds');
+    expect(validateImport(restored)).toEqual(restored);
+    const completedAgain = completeCurrent(restored);
+    expect(resolveQueue(completedAgain).at(-1)?.item.isPlaceholder).toBe(true);
+    expect(completedAgain.items.filter((entry) => entry.isPlaceholder)).toHaveLength(1);
+  });
+
+  it('duplicates completed project work into its blank slot and keeps completed errands absolutely last', () => {
+    const source = { ...item('done', 'p'), completedAt: timestamp };
+    const state = ensureProjectPlaceholders({ ...createEmptyState(), projects: [project('p')], items: [source, item('e1', null)], queue: [errand('e1')] });
+    const copied = duplicateItem(state, source.id);
+    expect(copied.items.some((entry) => entry.isPlaceholder)).toBe(false);
+    expect(copied.items[0]).toBe(source);
+    expect(resolveQueue(copied).at(-1)?.item).toMatchObject({ title: 'done', projectId: 'p', completedAt: null });
+    expect(copied.queue).toBe(state.queue);
+    const oldState: AppState = { ...createEmptyState(), projects: [project('p')], items: [{ ...item('old', null), completedAt: timestamp }] };
+    const errandCopy = duplicateItem(oldState, 'old');
+    expect(resolveQueue(errandCopy)[0].item.isPlaceholder).toBe(true);
+    expect(resolveQueue(errandCopy).at(-1)?.item).toMatchObject({ title: 'old', projectId: null, completedAt: null });
+    expect(validateImport(errandCopy)).toEqual(errandCopy);
+  });
+
+  it('rejects malformed, completed, orphaned, duplicate, or coexisting placeholder items in backups', () => {
+    const state = addProject(createEmptyState(), 'Empty');
+    const blank = state.items[0];
+    for (const patch of [
+      { title: 'Not blank' }, { title: ' ' }, { completedAt: timestamp },
+      { projectId: null }, { projectId: 'missing' }, { deletedProjectName: 'Deleted' },
+      { timeSpentSeconds: 0 }, { isPlaceholder: false }, { isPlaceholder: 1 },
+    ]) {
+      expect(() => validateImport({ ...state, items: [{ ...blank, ...patch }] })).toThrow(/Invalid backup/);
+    }
+    expect(() => validateImport({ ...state, items: [blank, { ...blank, id: 'second-blank' }] })).toThrow(/only unfinished item/);
+    expect(() => validateImport({ ...state, items: [blank, item('real', blank.projectId)] })).toThrow(/only unfinished item/);
+    expect(() => validateImport({ ...state, items: [{ ...blank, isPlaceholder: undefined }] })).toThrow(/item title/);
+    expect(exportCsv(state, 'items')).toContain('"Placeholder"');
+    expect(exportCsv(state, 'completed').split('\r\n')).toHaveLength(1);
   });
 });
 
@@ -415,8 +558,9 @@ describe('putting completed items back', () => {
     const completed = completeCurrent(putBackItem(state, 'p1'));
     expect(completed.projects[0]).toMatchObject({ status: 'active', completedAt: null });
     expect(completed.items[0].completedAt).toBeTruthy();
-    expect(completed.queue).toEqual(state.queue);
-    expect(resolveQueue(completed).map((entry) => entry.item.id)).toEqual(['e1']);
+    expect(completed.queue.slice(0, state.queue.length)).toEqual(state.queue);
+    expect(resolveQueue(completed)[0].item.id).toBe('e1');
+    expect(resolveQueue(completed).at(-1)?.item).toMatchObject({ projectId: 'p', title: '', isPlaceholder: true });
     expect(validateImport(JSON.parse(JSON.stringify(completed)))).toEqual(completed);
   });
 

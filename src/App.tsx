@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type {
   FormEvent,
+  KeyboardEvent as ReactKeyboardEvent,
   PointerEvent as ReactPointerEvent,
   ReactNode,
 } from "react";
@@ -154,6 +155,18 @@ function countCompletedToday(items: Item[]) {
   ).length;
 }
 
+function submitTaskOnEnter(event: ReactKeyboardEvent<HTMLTextAreaElement>) {
+  if (
+    event.key !== "Enter" ||
+    event.shiftKey ||
+    event.nativeEvent.isComposing ||
+    event.nativeEvent.keyCode === 229
+  )
+    return;
+  event.preventDefault();
+  if (!event.repeat) event.currentTarget.form?.requestSubmit();
+}
+
 function downloadFile(content: string, name: string, type: string) {
   const url = URL.createObjectURL(new Blob([content], { type }));
   const a = document.createElement("a");
@@ -211,7 +224,7 @@ export default function App() {
   const current = queue[0];
   const timerScope = `${workspace.mode}:${workspace.userEmail ?? "local"}`;
   const countdown = useCountdown({
-    itemId: current?.item.id ?? null,
+    itemId: current?.item.isPlaceholder ? null : (current?.item.id ?? null),
     scope: timerScope,
     ready: workspace.ready,
   });
@@ -302,7 +315,7 @@ export default function App() {
     }
   }
   function completeFocusedItem(timeSpentSeconds?: number) {
-    if (!current) return;
+    if (!current || current.item.isPlaceholder) return;
     if (
       mutate(
         (s) => completeCurrent(s, timeSpentSeconds),
@@ -318,7 +331,7 @@ export default function App() {
     }
   }
   function finishCurrentItem() {
-    if (!current) return;
+    if (!current || current.item.isPlaceholder) return;
     const timing = countdown.pauseForCompletion();
     if (timing) {
       setModal({
@@ -415,7 +428,7 @@ export default function App() {
     if (modal?.kind === "rename")
       submit(
         (s) => renameItem(s, modal.item.id, String(fields.get("title"))),
-        "Item updated.",
+        modal.item.isPlaceholder ? "A small step, added." : "Item updated.",
       );
   }
 
@@ -813,7 +826,7 @@ export default function App() {
 
               {screen === "focus" && (
                 <div
-                  className={`focus-page${countdown.timer ? " timer-open" : ""}`}
+                  className={`focus-page${countdown.timer ? " timer-open" : ""}${current?.item.isPlaceholder ? " has-placeholder" : ""}`}
                 >
                   <div className="focus-top">
                     <button
@@ -832,7 +845,11 @@ export default function App() {
                           <button
                             type="button"
                             className="secondary-button focus-edit"
-                            aria-label={`Edit ${current.item.title}`}
+                            aria-label={
+                              current.item.isPlaceholder
+                                ? "Edit placeholder"
+                                : `Edit ${current.item.title}`
+                            }
                             title="Edit current item"
                             onClick={() =>
                               setModal({ kind: "rename", item: current.item })
@@ -841,10 +858,12 @@ export default function App() {
                             <Pencil size={16} />
                             Edit
                           </button>
-                          <DuplicateButton
-                            item={current.item}
-                            onDuplicate={() => duplicate(current.item)}
-                          />
+                          {!current.item.isPlaceholder && (
+                            <DuplicateButton
+                              item={current.item}
+                              onDuplicate={() => duplicate(current.item)}
+                            />
+                          )}
                         </>
                       )}
                     </div>
@@ -863,11 +882,19 @@ export default function App() {
                             <Leaf size={27} />
                           )}
                         </div>
-                        <p className="eyebrow">JUST THIS ONE THING</p>
+                        <p className="eyebrow">
+                          {current.item.isPlaceholder
+                            ? "BLANK PLACEHOLDER"
+                            : "JUST THIS ONE THING"}
+                        </p>
                         <div className="focus-frame" key={current.item.id}>
                           <span className="frame-corner corner-tl" />
                           <span className="frame-corner corner-tr" />
-                          <h1>{current.item.title}</h1>
+                          <h1>
+                            {current.item.isPlaceholder
+                              ? "What’s next for this project?"
+                              : current.item.title}
+                          </h1>
                           <span className="frame-corner corner-bl" />
                           <span className="frame-corner corner-br" />
                         </div>
@@ -890,40 +917,79 @@ export default function App() {
                           </div>
                         )}
                         <p className="focus-reassurance">
-                          Everything else can wait.
+                          {current.item.isPlaceholder
+                            ? "Add a task, or close out the project when you’re done."
+                            : "Everything else can wait."}
                         </p>
                       </div>
                       <div className="focus-bottom">
-                        <FocusTimer
-                          key={`${workspace.mode}:${workspace.userEmail ?? "local"}:${current.item.id}`}
-                          title={current.item.title}
-                          countdown={countdown}
-                        />
-                        <div className="focus-actions">
-                          <button
-                            className="bite-button"
-                            onClick={() => setModal({ kind: "bite" })}
-                          >
-                            <Scissors size={21} />
-                            <span>
-                              Take a bite<small>Make it smaller</small>
-                            </span>
-                          </button>
-                          <button
-                            className="complete-button"
-                            onClick={finishCurrentItem}
-                          >
-                            <Check size={23} />
-                            <span>
-                              Completed!
-                              <small>On to the next little thing</small>
-                            </span>
-                          </button>
-                        </div>
-                        <p>
-                          Too much for right now? Take a bite and break it into
-                          two.
-                        </p>
+                        {current.item.isPlaceholder && current.project ? (
+                          <div className="focus-actions placeholder-actions">
+                            <button
+                              className="bite-button"
+                              onClick={() =>
+                                setModal({
+                                  kind: "item",
+                                  projectId: current.project!.id,
+                                })
+                              }
+                            >
+                              <Plus size={21} />
+                              <span>
+                                Add a task
+                                <small>Give this space its next step</small>
+                              </span>
+                            </button>
+                            <button
+                              className="complete-button"
+                              onClick={() =>
+                                setModal({
+                                  kind: "completeProject",
+                                  project: current.project!,
+                                })
+                              }
+                            >
+                              <CircleCheck size={23} />
+                              <span>
+                                Complete project
+                                <small>Everything here is done</small>
+                              </span>
+                            </button>
+                          </div>
+                        ) : (
+                          <>
+                            <FocusTimer
+                              key={`${workspace.mode}:${workspace.userEmail ?? "local"}:${current.item.id}`}
+                              title={current.item.title}
+                              countdown={countdown}
+                            />
+                            <div className="focus-actions">
+                              <button
+                                className="bite-button"
+                                onClick={() => setModal({ kind: "bite" })}
+                              >
+                                <Scissors size={21} />
+                                <span>
+                                  Take a bite<small>Make it smaller</small>
+                                </span>
+                              </button>
+                              <button
+                                className="complete-button"
+                                onClick={finishCurrentItem}
+                              >
+                                <Check size={23} />
+                                <span>
+                                  Completed!
+                                  <small>On to the next little thing</small>
+                                </span>
+                              </button>
+                            </div>
+                            <p>
+                              Too much for right now? Take a bite and break it
+                              into two.
+                            </p>
+                          </>
+                        )}
                       </div>
                     </>
                   ) : (
@@ -1077,7 +1143,7 @@ export default function App() {
                       )
                       .map((p, index) => {
                         const items = state.items.filter(
-                          (i) => i.projectId === p.id,
+                          (i) => i.projectId === p.id && !i.isPlaceholder,
                         );
                         const done = items.filter((i) => i.completedAt).length;
                         return (
@@ -1301,9 +1367,18 @@ export default function App() {
                     </div>
                     <div className="section-heading">
                       <h2>One step, then another.</h2>
-                      <span>{remainingProjectItems.length} remaining</span>
+                      <span>
+                        {
+                          remainingProjectItems.filter(
+                            (item) => !item.isPlaceholder,
+                          ).length
+                        }{" "}
+                        remaining
+                      </span>
                     </div>
-                    {remainingProjectItems.length ? (
+                    {remainingProjectItems.some(
+                      (item) => !item.isPlaceholder,
+                    ) ? (
                       <p className="small muted reorder-help">
                         Hold a handle to reorder. Select a step to add one after
                         it.
@@ -1316,29 +1391,58 @@ export default function App() {
                       </p>
                     )}
                     <div className="project-items">
-                      {remainingProjectItems.map((item, index, items) => (
-                        <ProjectItem
-                          key={item.id}
-                          item={item}
-                          index={index}
-                          count={items.length}
-                          selected={selectedItem === item.id}
-                          onSelect={() =>
-                            setSelectedItem(
-                              selectedItem === item.id ? null : item.id,
-                            )
-                          }
-                          onRename={() => setModal({ kind: "rename", item })}
-                          onDelete={() => setModal({ kind: "delete", item })}
-                          onDuplicate={() => duplicate(item)}
-                          onReorder={(direction) =>
-                            mutate((s) => reorderItem(s, item.id, direction))
-                          }
-                          onMove={(target) =>
-                            mutate((s) => moveItem(s, item.id, target))
-                          }
-                        />
-                      ))}
+                      {remainingProjectItems.map((item, index, items) =>
+                        item.isPlaceholder ? (
+                          <div
+                            className="project-item project-placeholder"
+                            key={item.id}
+                            data-item-id={item.id}
+                          >
+                            <span className="placeholder-symbol">
+                              <Plus size={21} />
+                            </span>
+                            <button
+                              className="item-title"
+                              onClick={() => setModal({ kind: "rename", item })}
+                            >
+                              <strong>Blank placeholder</strong>
+                              <small>
+                                Add a task here, or mark this project complete.
+                              </small>
+                            </button>
+                            <button
+                              className="icon-button"
+                              aria-label="Edit placeholder"
+                              title="Edit placeholder"
+                              onClick={() => setModal({ kind: "rename", item })}
+                            >
+                              <Pencil size={18} />
+                            </button>
+                          </div>
+                        ) : (
+                          <ProjectItem
+                            key={item.id}
+                            item={item}
+                            index={index}
+                            count={items.length}
+                            selected={selectedItem === item.id}
+                            onSelect={() =>
+                              setSelectedItem(
+                                selectedItem === item.id ? null : item.id,
+                              )
+                            }
+                            onRename={() => setModal({ kind: "rename", item })}
+                            onDelete={() => setModal({ kind: "delete", item })}
+                            onDuplicate={() => duplicate(item)}
+                            onReorder={(direction) =>
+                              mutate((s) => reorderItem(s, item.id, direction))
+                            }
+                            onMove={(target) =>
+                              mutate((s) => moveItem(s, item.id, target))
+                            }
+                          />
+                        ),
+                      )}
                     </div>
                     <button
                       className="add-project-item"
@@ -1646,7 +1750,11 @@ export default function App() {
                           {String(index + 1).padStart(2, "0")}
                         </span>
                         <div>
-                          <strong>{entry.item.title}</strong>
+                          <strong>
+                            {entry.item.isPlaceholder
+                              ? "Blank placeholder"
+                              : entry.item.title}
+                          </strong>
                           <small>{entry.project?.name || "Errand"}</small>
                         </div>
                         {index === 0 && (
@@ -1654,26 +1762,34 @@ export default function App() {
                         )}
                         <button
                           className="icon-button"
-                          aria-label={`Edit ${entry.item.title}`}
+                          aria-label={
+                            entry.item.isPlaceholder
+                              ? `Edit placeholder for ${entry.project?.name}`
+                              : `Edit ${entry.item.title}`
+                          }
                           onClick={() =>
                             setModal({ kind: "rename", item: entry.item })
                           }
                         >
                           <ChevronRight size={19} />
                         </button>
-                        <button
-                          className="icon-button subtle-delete"
-                          aria-label={`Delete ${entry.item.title}`}
-                          onClick={() =>
-                            setModal({ kind: "delete", item: entry.item })
-                          }
-                        >
-                          <Trash2 size={16} />
-                        </button>
-                        <DuplicateButton
-                          item={entry.item}
-                          onDuplicate={() => duplicate(entry.item)}
-                        />
+                        {!entry.item.isPlaceholder && (
+                          <>
+                            <button
+                              className="icon-button subtle-delete"
+                              aria-label={`Delete ${entry.item.title}`}
+                              onClick={() =>
+                                setModal({ kind: "delete", item: entry.item })
+                              }
+                            >
+                              <Trash2 size={16} />
+                            </button>
+                            <DuplicateButton
+                              item={entry.item}
+                              onDuplicate={() => duplicate(entry.item)}
+                            />
+                          </>
+                        )}
                       </div>
                     ))}
                   </div>
@@ -2106,7 +2222,9 @@ export default function App() {
                   : modal.kind === "bite"
                     ? "A smaller bite."
                     : modal.kind === "rename"
-                      ? "Edit your item"
+                      ? modal.item.isPlaceholder
+                        ? "Add your next task"
+                        : "Edit your item"
                       : modal.kind === "delete"
                         ? modal.item.completedAt
                           ? "Remove completed item?"
@@ -2142,7 +2260,8 @@ export default function App() {
                               ? state.items.some(
                                   (item) =>
                                     item.projectId === modal.project.id &&
-                                    !item.completedAt,
+                                    !item.completedAt &&
+                                    !item.isPlaceholder,
                                 )
                                 ? "This will mark the project and its remaining items as completed and remove them from Do now. You can reopen the project later."
                                 : "Move this project to Completed. You can reopen it later."
@@ -2202,18 +2321,7 @@ export default function App() {
                       placeholder="Something small is a good place to start…"
                       aria-describedby="add-item-keyboard-hint"
                       enterKeyHint="done"
-                      onKeyDown={(event) => {
-                        if (
-                          event.key !== "Enter" ||
-                          event.shiftKey ||
-                          event.nativeEvent.isComposing ||
-                          event.nativeEvent.keyCode === 229
-                        )
-                          return;
-                        event.preventDefault();
-                        if (!event.repeat)
-                          event.currentTarget.form?.requestSubmit();
-                      }}
+                      onKeyDown={submitTaskOnEnter}
                       rows={3}
                       maxLength={500}
                       autoFocus
@@ -2265,17 +2373,40 @@ export default function App() {
                 </label>
               )}
               {modal.kind === "rename" && (
-                <label>
-                  Item name
-                  <textarea
-                    name="title"
-                    defaultValue={modal.item.title}
-                    rows={3}
-                    maxLength={500}
-                    autoFocus
-                    required
-                  />
-                </label>
+                <>
+                  <label>
+                    Item name
+                    <textarea
+                      name="title"
+                      defaultValue={modal.item.title}
+                      placeholder={
+                        modal.item.isPlaceholder
+                          ? "What’s the next small step?"
+                          : undefined
+                      }
+                      aria-describedby={
+                        modal.item.isPlaceholder
+                          ? "placeholder-keyboard-hint"
+                          : undefined
+                      }
+                      enterKeyHint={
+                        modal.item.isPlaceholder ? "done" : undefined
+                      }
+                      onKeyDown={
+                        modal.item.isPlaceholder ? submitTaskOnEnter : undefined
+                      }
+                      rows={3}
+                      maxLength={500}
+                      autoFocus
+                      required
+                    />
+                  </label>
+                  {modal.item.isPlaceholder && (
+                    <p id="placeholder-keyboard-hint" className="small muted">
+                      Enter to add · Shift+Enter for a new line
+                    </p>
+                  )}
+                </>
               )}
               {modal.kind === "bite" && current && (
                 <>
@@ -2335,7 +2466,9 @@ export default function App() {
                     : modal.kind === "project"
                       ? "Create project"
                       : modal.kind === "rename"
-                        ? "Save changes"
+                        ? modal.item.isPlaceholder
+                          ? "Add task"
+                          : "Save changes"
                         : "Add item"}
                   {modal.kind === "bite" ? (
                     <Scissors size={17} />

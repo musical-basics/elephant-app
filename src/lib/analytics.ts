@@ -31,6 +31,8 @@ export function getDailyActivity(
   const byDate = new Map(days.map((day) => [day.key, day]));
 
   for (const item of items) {
+    // Empty-project prompts represent a decision, not added or completed work.
+    if (item.isPlaceholder) continue;
     const addedDay = byDate.get(localDateKey(new Date(item.createdAt)));
     if (addedDay) addedDay.added += 1;
     if (item.completedAt) {
