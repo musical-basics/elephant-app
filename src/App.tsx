@@ -2200,12 +2200,29 @@ export default function App() {
                     <textarea
                       name="title"
                       placeholder="Something small is a good place to start…"
+                      aria-describedby="add-item-keyboard-hint"
+                      enterKeyHint="done"
+                      onKeyDown={(event) => {
+                        if (
+                          event.key !== "Enter" ||
+                          event.shiftKey ||
+                          event.nativeEvent.isComposing ||
+                          event.nativeEvent.keyCode === 229
+                        )
+                          return;
+                        event.preventDefault();
+                        if (!event.repeat)
+                          event.currentTarget.form?.requestSubmit();
+                      }}
                       rows={3}
                       maxLength={500}
                       autoFocus
                       required
                     />
                   </label>
+                  <p id="add-item-keyboard-hint" className="small muted">
+                    Enter to add · Shift+Enter for a new line
+                  </p>
                   <label>
                     A little step in
                     <select
