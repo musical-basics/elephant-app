@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   addItem, addProject, completeCurrent, createDemoState, createEmptyState,
-  deleteItem, deleteProject, duplicateItem, exportCsv, moveItem, renameItem, reorderItem, reprocess,
+  deleteItem, deleteProject, duplicateItem, exportCsv, moveItem, putBackItem, renameItem, reorderItem, reprocess,
   resolveQueue, takeBite, updateProject, validateImport, MAX_INLINE_AVATAR_BYTES,
   type AppState, type Item, type Project, type QueueSlot,
 } from './model';
@@ -157,6 +157,129 @@ describe('completion and project lifecycle', () => {
     expect(next.queue).toHaveLength(0);
     expect(next.projects[0]).toMatchObject({ status: 'active', completedAt: null });
     expect(validateImport(next)).toEqual(next);
+  });
+});
+
+describe('putting completed items back', () => {
+  it('restores a later project step to the front while keeping all existing queue contents and slots in order', () => {
+    const state = sample();
+    state.items[2] = { ...state.items[2], completedAt: timestamp };
+    state.projects.push(project('q'));
+    state.items.push(item('q1', 'q'), item('q2', 'q'), { ...item('other-done', null), completedAt: timestamp });
+    state.queue.splice(1, 0, slot('q-slot', 'q'));
+    const source = state.items[2];
+    const original = structuredClone(state);
+    const originalOrder = resolveQueue(state).map((entry) => entry.item.id);
+    const next = putBackItem(state, source.id);
+
+    expect(next.items).toHaveLength(state.items.length);
+    expect(next.items.filter((entry) => entry.id === source.id)).toEqual([{ ...source, completedAt: null }]);
+    expect(next.items.filter((entry) => entry.projectId === 'p').map((entry) => entry.id)).toEqual(['p3', 'p1', 'p2', 'p4']);
+    expect(resolveQueue(next).map((entry) => entry.item.id)).toEqual([source.id, ...originalOrder]);
+    expect(next.queue.slice(1)).toEqual(state.queue);
+    expect(next.queue[1]).toBe(state.queue[0]);
+    expect(next.queue[0]).toMatchObject({ kind: 'project', projectId: 'p' });
+    expect(state.queue.some((entry) => entry.id === next.queue[0].id)).toBe(false);
+    expect(next.items.find((entry) => entry.id === 'other-done')).toBe(state.items.at(-1));
+    // The unrelated q project is eligible, but restoring must not append it.
+    expect(reprocess(next).queue).toHaveLength(next.queue.length + 1);
+    expect(next.projects).toBe(state.projects);
+    expect(state).toEqual(original);
+    expect(validateImport(JSON.parse(JSON.stringify(next)))).toEqual(next);
+  });
+
+  it('restores an errand with the same identity and a fresh dedicated slot at the front', () => {
+    const state = sample();
+    const source = { ...item('errand-done', null), completedAt: timestamp };
+    state.items.push(source);
+    const original = structuredClone(state);
+    const next = putBackItem(state, source.id);
+
+    expect(resolveQueue(next)[0].item).toEqual({ ...source, completedAt: null });
+    expect(next.queue[0]).toMatchObject({ kind: 'errand', itemId: source.id });
+    expect(next.queue.slice(1)).toEqual(state.queue);
+    expect(next.items.map((entry) => entry.id)).toEqual(state.items.map((entry) => entry.id));
+    expect(next.items).toHaveLength(state.items.length);
+    expect(next.projects).toBe(state.projects);
+    expect(state).toEqual(original);
+    expect(validateImport(JSON.parse(JSON.stringify(next)))).toEqual(next);
+  });
+
+  it.each(['completed', 'inactive'] as const)('activates a %s parent and puts its restored step ahead of existing work', (status) => {
+    const state: AppState = {
+      ...createEmptyState(),
+      projects: [project('p', status)],
+      items: [
+        { ...item('p1', 'p'), completedAt: status === 'completed' ? timestamp : null },
+        { ...item('p2', 'p'), completedAt: timestamp },
+        { ...item('p3', 'p'), completedAt: timestamp },
+        item('e1', null),
+      ],
+      queue: [errand('e1')],
+    };
+    const original = structuredClone(state);
+    const next = putBackItem(state, 'p2');
+    expect(next.projects[0]).toEqual({ ...state.projects[0], status: 'active', completedAt: null });
+    expect(resolveQueue(next).map((entry) => entry.item.id)).toEqual(['p2', 'e1']);
+    expect(next.items.find((entry) => entry.id === 'p3')).toBe(state.items[2]);
+    expect(next.items.find((entry) => entry.id === 'p1')?.completedAt).toBe(state.items[0].completedAt);
+    expect(next.queue.slice(1)).toEqual(state.queue);
+    expect(state).toEqual(original);
+    expect(validateImport(JSON.parse(JSON.stringify(next)))).toEqual(next);
+  });
+
+  it('restores multiple completed steps from the same project in last-restored-first order', () => {
+    const state = sample();
+    state.items = state.items.map((entry) => ['p2', 'p3'].includes(entry.id) ? { ...entry, completedAt: timestamp } : entry);
+    state.queue = state.queue.filter((entry) => entry.id !== 'c');
+    const existingOrder = resolveQueue(state).map((entry) => entry.item.id);
+    const first = putBackItem(state, 'p2');
+    const second = putBackItem(first, 'p3');
+    expect(resolveQueue(second).map((entry) => entry.item.id)).toEqual(['p3', 'p2', ...existingOrder]);
+    expect(second.queue.slice(1)).toEqual(first.queue);
+    expect(second.queue.slice(2)).toEqual(state.queue);
+    expect(new Set(second.queue.map((entry) => entry.id)).size).toBe(second.queue.length);
+    expect(second.items).toHaveLength(state.items.length);
+    expect(putBackItem(second, 'p2')).toBe(second);
+    expect(validateImport(JSON.parse(JSON.stringify(second)))).toEqual(second);
+  });
+
+  it('completes a restored item normally without losing any original queue slot', () => {
+    const state = sample();
+    state.items[2] = { ...state.items[2], completedAt: timestamp };
+    const restored = putBackItem(state, 'p3');
+    const completed = completeCurrent(restored);
+    expect(completed.items.find((entry) => entry.id === 'p3')?.completedAt).toBeTruthy();
+    expect(completed.items).toHaveLength(state.items.length);
+    expect(completed.queue).toEqual(state.queue);
+    expect(resolveQueue(completed).map((entry) => entry.item.id)).toEqual(resolveQueue(state).map((entry) => entry.item.id));
+    const again = putBackItem(completed, 'p3');
+    expect(resolveQueue(again)[0].item.id).toBe('p3');
+    expect(again.queue.slice(1)).toEqual(state.queue);
+    expect(again.queue[0].id).not.toBe(restored.queue[0].id);
+    expect(validateImport(JSON.parse(JSON.stringify(again)))).toEqual(again);
+  });
+
+  it('recompletes a reopened project after its restored final step', () => {
+    const state: AppState = {
+      ...createEmptyState(),
+      projects: [project('p', 'completed')],
+      items: [{ ...item('p1', 'p'), completedAt: timestamp }, item('e1', null)],
+      queue: [errand('e1')],
+    };
+    const completed = completeCurrent(putBackItem(state, 'p1'));
+    expect(completed.projects[0].status).toBe('completed');
+    expect(completed.projects[0].completedAt).toBeTruthy();
+    expect(completed.queue).toEqual(state.queue);
+    expect(resolveQueue(completed).map((entry) => entry.item.id)).toEqual(['e1']);
+    expect(validateImport(JSON.parse(JSON.stringify(completed)))).toEqual(completed);
+  });
+
+  it('returns the original state for missing or already unfinished items', () => {
+    const state = sample();
+    expect(putBackItem(state, 'missing')).toBe(state);
+    expect(putBackItem(state, 'p1')).toBe(state);
+    expect(putBackItem(state, 'e1')).toBe(state);
   });
 });
 

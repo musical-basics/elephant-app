@@ -56,6 +56,7 @@ import {
   duplicateItem,
   exportCsv,
   moveItem,
+  putBackItem,
   renameItem,
   reorderItem,
   resolveQueue,
@@ -1250,14 +1251,31 @@ export default function App() {
                                     (p) => p.id === item.projectId,
                                   )?.name || "Errand"}
                                 </p>
+                                <time dateTime={item.completedAt!}>
+                                  {formatDate(item.completedAt!, true)}
+                                </time>
                               </div>
-                              <time dateTime={item.completedAt!}>
-                                {formatDate(item.completedAt!, true)}
-                              </time>
-                              <DuplicateButton
-                                item={item}
-                                onDuplicate={() => duplicate(item)}
-                              />
+                              <span className="completed-actions">
+                                <button
+                                  type="button"
+                                  className="secondary-button put-back-item"
+                                  aria-label={`Put back ${item.title}`}
+                                  title="Restore to the front of Do now"
+                                  onClick={() =>
+                                    mutate(
+                                      (s) => putBackItem(s, item.id),
+                                      "Item put back at the front of Do now.",
+                                    )
+                                  }
+                                >
+                                  <RotateCcw size={16} />
+                                  Put back
+                                </button>
+                                <DuplicateButton
+                                  item={item}
+                                  onDuplicate={() => duplicate(item)}
+                                />
+                              </span>
                             </div>
                           ))
                       : state.projects
@@ -1289,6 +1307,11 @@ export default function App() {
                             </button>
                           ))}
                   </div>
+                  {formError && (
+                    <p className="form-error" role="alert">
+                      {formError}
+                    </p>
+                  )}
                   {(completedTab === "items"
                     ? !completedItems.some((i) =>
                         i.title.toLowerCase().includes(search.toLowerCase()),

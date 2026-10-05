@@ -244,6 +244,33 @@ export function completeCurrent(state: AppState): AppState {
   return reprocess({ ...state, items, projects, queue: state.queue.filter((slot) => slot.id !== current.slot.id) });
 }
 
+/** Restore the original completed item to the front without reprocessing others. */
+export function putBackItem(state: AppState, itemId: string): AppState {
+  const sourceIndex = state.items.findIndex((item) => item.id === itemId);
+  const source = state.items[sourceIndex];
+  if (!source?.completedAt) return state;
+  const parent = source.projectId ? state.projects.find((project) => project.id === source.projectId) : undefined;
+  if (source.projectId && !parent) return state;
+
+  const restored = { ...source, completedAt: null };
+  const items = [...state.items];
+  items[sourceIndex] = restored;
+  if (parent) {
+    const firstRemaining = items.findIndex((item) => item.projectId === parent.id && !item.completedAt);
+    if (firstRemaining < sourceIndex) {
+      items.splice(sourceIndex, 1);
+      items.splice(firstRemaining, 0, restored);
+    }
+  }
+  const projects = parent && parent.status !== 'active'
+    ? state.projects.map((project): Project => project.id === parent.id ? { ...project, status: 'active', completedAt: null } : project)
+    : state.projects;
+  const slot: QueueSlot = parent
+    ? projectSlot(parent.id)
+    : { id: id(), kind: 'errand', itemId: source.id, createdAt: now() };
+  return { ...state, items, projects, queue: [slot, ...state.queue] };
+}
+
 export function takeBite(state: AppState, firstTitle: string, remainderTitle: string): AppState {
   const first = title(firstTitle);
   const remainder = title(remainderTitle);

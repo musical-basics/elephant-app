@@ -23,6 +23,7 @@ A mobile-first productivity app that shows one item at a time. Five complete vis
 - Duplicate any item from its copy button. Project copies follow the original; errand copies join the queue. Each copy starts unfinished, preserves the original, and can be edited independently. Copying a completed project's item reopens that project.
 - Delete a project from its card or detail page, with confirmation before removing the project, its items, and its completed history.
 - Completed item/project history, search, profile name/photo, and an optional master list hidden by default.
+- Put back a completed item to restore the original at the front of Do now. Its project reopens if needed, and other queued items keep their order.
 - JSON export/import with validation and replacement confirmation, list-specific CSV exports, and confirmed reset.
 - Browser persistence plus Supabase email-link sign-in and a private workspace for each account, with revision checks that prevent silent cross-device overwrites.
 

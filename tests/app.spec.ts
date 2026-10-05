@@ -4,6 +4,127 @@ import { readFile } from "node:fs/promises";
 test.use({ viewport: { width: 390, height: 844 } });
 
 for (const design of ["still", "ember", "orbit", "tide", "pop"]) {
+  test(`${design}: put a completed item back at the front of Do now on a narrow phone`, async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 320, height: 844 });
+    const title = "Write a few ideas for Sunday dinner";
+    await page.goto(`/#/${design}/focus`);
+    await page.getByRole("button", { name: /Completed!/ }).click();
+    await expect(
+      page.getByRole("heading", { name: "Water the plants", exact: true }),
+    ).toBeVisible();
+    await page.goto(`/#/${design}/completed`);
+    const putBack = page.getByRole("button", {
+      name: `Put back ${title}`,
+      exact: true,
+    });
+    await expect(putBack).toBeVisible();
+    const bounds = await putBack.boundingBox();
+    expect(bounds!.height).toBeGreaterThanOrEqual(44);
+    expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(320);
+    expect(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth <= window.innerWidth,
+      ),
+    ).toBe(true);
+    await putBack.click();
+    await expect(page.locator(".completed-row")).toHaveCount(0);
+    await expect(
+      page
+        .getByRole("status")
+        .filter({ hasText: "Item put back at the front of Do now." }),
+    ).toBeVisible();
+    await page
+      .getByRole("navigation", { name: "Mobile navigation" })
+      .getByRole("button", { name: "Do now", exact: true })
+      .click();
+    await expect(
+      page.getByRole("heading", { name: title, exact: true }),
+    ).toBeVisible();
+    await page.reload();
+    await expect(
+      page.getByRole("heading", { name: title, exact: true }),
+    ).toBeVisible();
+    await page.getByRole("button", { name: /Completed!/ }).click();
+    await expect(
+      page.getByRole("heading", { name: "Water the plants", exact: true }),
+    ).toBeVisible();
+  });
+}
+
+test("putting back an errand preserves other completed items and the rest of the queue", async ({
+  page,
+}) => {
+  await page.goto("/#/still/focus");
+  await page.getByRole("button", { name: /Completed!/ }).click();
+  await expect(
+    page.getByRole("heading", { name: "Water the plants", exact: true }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: /Completed!/ }).click();
+  await page.goto("/#/still/queue");
+  await expect(page.locator(".queue-row").first()).toBeVisible();
+  const before = await page.locator(".queue-row strong").allTextContents();
+  await page.goto("/#/still/completed");
+  await page
+    .getByRole("button", { name: "Put back Water the plants", exact: true })
+    .click();
+  await expect(page.locator(".completed-row strong")).toHaveText(
+    "Write a few ideas for Sunday dinner",
+  );
+  await page.goto("/#/still/queue");
+  await expect(page.locator(".queue-row strong")).toHaveText([
+    "Water the plants",
+    ...before,
+  ]);
+  await page.goto("/#/still/focus");
+  await page.reload();
+  await expect(
+    page.getByRole("heading", { name: "Water the plants", exact: true }),
+  ).toBeVisible();
+});
+
+test("putting back the last step of a completed project reopens its original project", async ({
+  page,
+}) => {
+  await page.goto("/#/still/settings");
+  await page
+    .getByRole("button", { name: "Reset workspace", exact: true })
+    .click();
+  await page.getByRole("button", { name: "Reset everything" }).click();
+  await page.goto("/#/still/projects");
+  await page
+    .locator(".page-heading")
+    .getByRole("button", { name: "Add project", exact: true })
+    .click();
+  await page
+    .getByLabel("Project name", { exact: true })
+    .fill("A finished project");
+  await page.getByRole("button", { name: "Create project" }).click();
+  const projectUrl = page.url();
+  await page.getByRole("button", { name: "Add a little step" }).click();
+  await page.getByLabel("What would you like to do?").fill("One final step");
+  await page
+    .getByRole("dialog")
+    .getByRole("button", { name: "Add item", exact: true })
+    .click();
+  await page.goto("/#/still/focus");
+  await page.getByRole("button", { name: /Completed!/ }).click();
+  await page.goto("/#/still/completed");
+  await page
+    .getByRole("button", { name: "Put back One final step", exact: true })
+    .click();
+  await page.goto("/#/still/focus");
+  await expect(
+    page.getByRole("heading", { name: "One final step", exact: true }),
+  ).toBeVisible();
+  await page.goto(projectUrl);
+  await expect(page.getByText("ACTIVE PROJECT", { exact: true })).toBeVisible();
+  await expect(page.locator(".project-item")).toHaveCount(1);
+  await expect(page.locator(".item-title")).toHaveText("One final step");
+});
+
+for (const design of ["still", "ember", "orbit", "tide", "pop"]) {
   test(`${design}: duplicate project items on a narrow phone and edit copies independently`, async ({
     page,
   }) => {

@@ -1038,9 +1038,6 @@ button {
 .duplicate-item {
   flex-shrink: 0;
 }
-.completed-row > .duplicate-item {
-  margin-left: auto;
-}
 .reorder-buttons .icon-button {
   min-width: 30px;
   min-height: 38px;
@@ -1375,6 +1372,7 @@ button {
 }
 .completed-row > div {
   flex: 1;
+  min-width: 0;
 }
 .completed-row strong {
   font-size: 12px;
@@ -1387,9 +1385,21 @@ button {
   margin-top: 6px;
 }
 .completed-row time {
+  display: block;
+  margin-top: 8px;
   font-size: 9px;
   color: var(--muted);
-  white-space: nowrap;
+  line-height: 1.6;
+}
+.completed-actions {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  gap: 8px;
+}
+.completed-actions .put-back-item {
+  min-height: 44px;
+  font-size: 12px;
 }
 .completed-project {
   width: 100%;
@@ -2450,11 +2460,6 @@ button {
   .completed-row {
     padding: 19px;
   }
-  .completed-row time {
-    white-space: normal;
-    width: 66px;
-    line-height: 1.6;
-  }
   .focus-frame h1 {
     font-size: 36px;
   }
@@ -2965,11 +2970,8 @@ button {
     min-width: calc(100% - 45px);
     flex: 1;
   }
-  .completed-row time {
-    width: auto;
+  .completed-actions {
     margin-left: 41px;
-    margin-top: -3px;
-    font-size: 9px;
   }
   .completed-row strong {
     font-size: 12px;
