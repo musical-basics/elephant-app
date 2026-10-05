@@ -238,14 +238,8 @@ export function completeCurrent(state: AppState): AppState {
   if (!current) return state;
   const timestamp = now();
   const items = state.items.map((item) => item.id === current.item.id ? { ...item, completedAt: timestamp } : item);
-  const projects = state.projects.map((project): Project => {
-    if (project.id !== current.item.projectId) return project;
-    const projectItems = items.filter((item) => item.projectId === project.id);
-    return projectItems.length > 0 && projectItems.every((item) => item.completedAt)
-      ? { ...project, status: 'completed', completedAt: timestamp }
-      : project;
-  });
-  return reprocess({ ...state, items, projects, queue: state.queue.filter((slot) => slot.id !== current.slot.id) });
+  // A project stays open until the user explicitly marks the project complete.
+  return reprocess({ ...state, items, queue: state.queue.filter((slot) => slot.id !== current.slot.id) });
 }
 
 /** Restore the original completed item to the front without reprocessing others. */

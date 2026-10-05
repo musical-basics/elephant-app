@@ -83,6 +83,7 @@ type Modal =
   | { kind: "rename"; item: Item }
   | { kind: "delete"; item: Item }
   | { kind: "deleteProject"; project: Project }
+  | { kind: "completeProject"; project: Project }
   | { kind: "reset" }
   | { kind: "import"; data: AppState };
 
@@ -168,6 +169,9 @@ export default function App() {
   const queue = resolveQueue(state);
   const current = queue[0];
   const project = state.projects.find((p) => p.id === projectId);
+  const remainingProjectItems = state.items.filter(
+    (item) => item.projectId === project?.id && !item.completedAt,
+  );
   const completedItems = state.items
     .filter((i) => i.completedAt)
     .sort((a, b) => b.completedAt!.localeCompare(a.completedAt!));
@@ -951,13 +955,15 @@ export default function App() {
                     <div className="project-page-actions">
                       <button
                         className="text-button page-back"
-                        onClick={() =>
+                        onClick={() => {
+                          if (project.status === "completed")
+                            setCompletedTab("projects");
                           navigate(
                             project.status === "completed"
                               ? "completed"
                               : "projects",
-                          )
-                        }
+                          );
+                        }}
                       >
                         <ArrowLeft size={17} />
                         {project.status === "completed"
@@ -1046,59 +1052,72 @@ export default function App() {
                               }),
                             project.status === "active"
                               ? "Project moved to upcoming."
-                              : "Project activated.",
+                              : project.status === "completed"
+                                ? "Project reopened."
+                                : "Project activated.",
                           )
                         }
                       >
                         {project.status === "active"
                           ? "Move to upcoming"
-                          : "Activate project"}
+                          : project.status === "completed"
+                            ? "Reopen project"
+                            : "Activate project"}
                         <ArrowRight size={14} />
                       </button>
+                      {project.status !== "completed" && (
+                        <button
+                          type="button"
+                          className="secondary-button project-complete-action"
+                          onClick={() =>
+                            setModal({ kind: "completeProject", project })
+                          }
+                        >
+                          <CircleCheck size={17} />
+                          Mark project complete
+                        </button>
+                      )}
                     </div>
                     <div className="section-heading">
                       <h2>One step, then another.</h2>
-                      <span>
-                        {
-                          state.items.filter(
-                            (i) => i.projectId === project.id && !i.completedAt,
-                          ).length
-                        }{" "}
-                        remaining
-                      </span>
+                      <span>{remainingProjectItems.length} remaining</span>
                     </div>
-                    <p className="small muted reorder-help">
-                      Hold a handle to reorder. Select a step to add one after
-                      it.
-                    </p>
+                    {remainingProjectItems.length ? (
+                      <p className="small muted reorder-help">
+                        Hold a handle to reorder. Select a step to add one after
+                        it.
+                      </p>
+                    ) : (
+                      <p className="small muted project-empty-note">
+                        {project.status === "completed"
+                          ? "This project is complete. Adding a step will reopen it."
+                          : "No unfinished steps. Add more whenever you’re ready, or mark this project complete."}
+                      </p>
+                    )}
                     <div className="project-items">
-                      {state.items
-                        .filter(
-                          (i) => i.projectId === project.id && !i.completedAt,
-                        )
-                        .map((item, index, items) => (
-                          <ProjectItem
-                            key={item.id}
-                            item={item}
-                            index={index}
-                            count={items.length}
-                            selected={selectedItem === item.id}
-                            onSelect={() =>
-                              setSelectedItem(
-                                selectedItem === item.id ? null : item.id,
-                              )
-                            }
-                            onRename={() => setModal({ kind: "rename", item })}
-                            onDelete={() => setModal({ kind: "delete", item })}
-                            onDuplicate={() => duplicate(item)}
-                            onReorder={(direction) =>
-                              mutate((s) => reorderItem(s, item.id, direction))
-                            }
-                            onMove={(target) =>
-                              mutate((s) => moveItem(s, item.id, target))
-                            }
-                          />
-                        ))}
+                      {remainingProjectItems.map((item, index, items) => (
+                        <ProjectItem
+                          key={item.id}
+                          item={item}
+                          index={index}
+                          count={items.length}
+                          selected={selectedItem === item.id}
+                          onSelect={() =>
+                            setSelectedItem(
+                              selectedItem === item.id ? null : item.id,
+                            )
+                          }
+                          onRename={() => setModal({ kind: "rename", item })}
+                          onDelete={() => setModal({ kind: "delete", item })}
+                          onDuplicate={() => duplicate(item)}
+                          onReorder={(direction) =>
+                            mutate((s) => reorderItem(s, item.id, direction))
+                          }
+                          onMove={(target) =>
+                            mutate((s) => moveItem(s, item.id, target))
+                          }
+                        />
+                      ))}
                     </div>
                     <button
                       className="add-project-item"
@@ -1829,9 +1848,11 @@ export default function App() {
                       ? "Remove this item?"
                       : modal.kind === "deleteProject"
                         ? "Delete this project?"
-                        : modal.kind === "import"
-                          ? "Restore this workspace?"
-                          : "Ready for a fresh start?"
+                        : modal.kind === "completeProject"
+                          ? "Complete this project?"
+                          : modal.kind === "import"
+                            ? "Restore this workspace?"
+                            : "Ready for a fresh start?"
           }
           description={
             modal.kind === "bite"
@@ -1848,7 +1869,15 @@ export default function App() {
                         ? "This item will be removed from the project and queue. This can’t be undone."
                         : modal.kind === "deleteProject"
                           ? "This permanently deletes the project and its unfinished items, removing them from the active queue. Completed items will stay in your history."
-                          : undefined
+                          : modal.kind === "completeProject"
+                            ? state.items.some(
+                                (item) =>
+                                  item.projectId === modal.project.id &&
+                                  !item.completedAt,
+                              )
+                              ? "This will mark the project and its remaining items as completed and remove them from Do now. You can reopen the project later."
+                              : "Move this project to Completed. You can reopen it later."
+                            : undefined
           }
           onClose={() => {
             if (!restoring) setModal(null);
@@ -1991,6 +2020,48 @@ export default function App() {
                 </button>
               </div>
             </form>
+          )}
+          {modal.kind === "completeProject" && (
+            <>
+              <p className="confirm-item">{modal.project.name}</p>
+              {formError && (
+                <p className="form-error" role="alert">
+                  {formError}
+                </p>
+              )}
+              <div className="sheet-actions complete-project-confirm">
+                <button
+                  className="secondary-button"
+                  onClick={() => setModal(null)}
+                >
+                  Keep project open
+                </button>
+                <button
+                  className="primary-button"
+                  onClick={() => {
+                    try {
+                      update((s) =>
+                        updateProject(s, modal.project.id, {
+                          status: "completed",
+                        }),
+                      );
+                      setModal(null);
+                      setSelectedItem(null);
+                      setToast("Project marked complete.");
+                    } catch (error) {
+                      setFormError(
+                        error instanceof Error
+                          ? error.message
+                          : "Could not complete this project. Please try again.",
+                      );
+                    }
+                  }}
+                >
+                  <CircleCheck size={17} />
+                  Mark project complete
+                </button>
+              </div>
+            </>
           )}
           {modal.kind === "deleteProject" && (
             <>

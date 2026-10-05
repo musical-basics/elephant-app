@@ -15,6 +15,7 @@ A mobile-first productivity app that shows one item at a time. Five complete vis
 ## Included
 
 - One current item, with its project shown underneath. Completing an item timestamps it and advances the queue.
+- Finishing the last item keeps its project active so you can add more. Use **Mark project complete** on the project page to explicitly finish it; confirmation also completes any remaining items. **Reopen project** makes it active again.
 - Take a Bite: rename the current step and create its remainder. The first step stays open until explicitly completed.
 - Errands and sequential project items; active, upcoming, and completed projects; editable names and due dates.
 - Project placeholders preserve each project's reserved queue positions when its steps are inserted, reordered, split, or deleted.

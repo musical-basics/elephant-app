@@ -41,7 +41,7 @@ For a standalone errand, the product writeup (`Elephant V1.0 Writeup v2.pdf`, Ta
 
 ## Completion and source inconsistencies
 
-Completing the current item timestamps it, removes its consumed slot, and reprocesses the remaining queue. A nonempty project automatically completes when all its steps have been completed. Adding a step to a completed project reopens it. Deleting the last step does not claim the project is completed.
+Completing the current item timestamps it, removes its consumed slot, and reprocesses the remaining queue. Per the current product requirement, completing or deleting the last step leaves its project active so more steps can be added later. Only the explicit **Mark project complete** action completes the project; its confirmation also completes any remaining items and removes the project's queue slots. Reopening the project, adding a step to it, or putting back one of its completed items makes it active again.
 
 The compact sheet has stale manual counts: `Sheet1!E32:E33` and `Sheet1!E41:E42` still show two active and three inactive items despite displaying three active positions. The implementation derives counts from current data. The compact prose also calls L an “index”; the detailed sheet explicitly establishes one-based position and its examples agree with that interpretation.
 

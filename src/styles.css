@@ -932,6 +932,13 @@ button {
   margin-left: auto;
   font-size: 10px;
 }
+.project-attributes .project-complete-action {
+  min-height: 44px;
+}
+.project-empty-note {
+  line-height: 1.7;
+  margin-bottom: 16px !important;
+}
 .section-heading {
   display: flex;
   justify-content: space-between;
@@ -3071,6 +3078,9 @@ button {
   }
   .sheet-actions .secondary-button {
     min-height: 49px;
+  }
+  .complete-project-confirm {
+    flex-direction: column;
   }
   .toast {
     left: 50%;

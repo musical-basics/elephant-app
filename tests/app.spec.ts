@@ -84,44 +84,165 @@ test("putting back an errand preserves other completed items and the rest of the
   ).toBeVisible();
 });
 
-test("putting back the last step of a completed project reopens its original project", async ({
+for (const design of ["still", "ember", "orbit", "tide", "pop"]) {
+  test(`${design}: projects stay active after the last item and complete only when marked`, async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 320, height: 844 });
+    await page.goto(`/#/${design}/settings`);
+    await page
+      .getByRole("button", { name: "Reset workspace", exact: true })
+      .click();
+    await page.getByRole("button", { name: "Reset everything" }).click();
+    await page.goto(`/#/${design}/projects`);
+    await page
+      .locator(".page-heading")
+      .getByRole("button", { name: "Add project", exact: true })
+      .click();
+    await page
+      .getByLabel("Project name", { exact: true })
+      .fill("A finished project");
+    await page.getByRole("button", { name: "Create project" }).click();
+    const projectUrl = page.url();
+    const addStep = async (title: string) => {
+      await page.getByRole("button", { name: "Add a little step" }).click();
+      await page.getByLabel("What would you like to do?").fill(title);
+      await page
+        .getByRole("dialog")
+        .getByRole("button", { name: "Add item", exact: true })
+        .click();
+    };
+    await addStep("One final step");
+    await page.goto(`/#/${design}/focus`);
+    await page.getByRole("button", { name: /Completed!/ }).click();
+    await page.goto(`/#/${design}/projects`);
+    await page
+      .getByRole("button", {
+        name: "Open project A finished project",
+        exact: true,
+      })
+      .click();
+    await page.reload();
+    await expect(
+      page.getByText("ACTIVE PROJECT", { exact: true }),
+    ).toBeVisible();
+    await expect(page.locator(".project-item")).toHaveCount(0);
+    await expect(page.locator(".project-empty-note")).toContainText(
+      "Add more whenever you’re ready",
+    );
+    await addStep("Another step I still need");
+    await page.goto(`/#/${design}/focus`);
+    await expect(
+      page.getByRole("heading", {
+        name: "Another step I still need",
+        exact: true,
+      }),
+    ).toBeVisible();
+    await page.getByRole("button", { name: /Completed!/ }).click();
+    await page.goto(projectUrl);
+    await expect(
+      page.getByText("ACTIVE PROJECT", { exact: true }),
+    ).toBeVisible();
+    await page
+      .getByRole("button", { name: "Mark project complete", exact: true })
+      .click();
+    const dialog = page.getByRole("dialog");
+    await expect(dialog).toContainText("Move this project to Completed.");
+    await dialog
+      .getByRole("button", { name: "Keep project open", exact: true })
+      .click();
+    await expect(
+      page.getByText("ACTIVE PROJECT", { exact: true }),
+    ).toBeVisible();
+    await page
+      .getByRole("button", { name: "Mark project complete", exact: true })
+      .click();
+    const confirm = dialog.getByRole("button", {
+      name: "Mark project complete",
+      exact: true,
+    });
+    await expect(confirm).toBeVisible();
+    const bounds = await confirm.boundingBox();
+    expect(bounds!.height).toBeGreaterThanOrEqual(44);
+    expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(320);
+    expect(
+      await dialog.evaluate((el) => el.scrollWidth <= el.clientWidth),
+    ).toBe(true);
+    await confirm.click();
+    await expect(
+      page.getByText("COMPLETED PROJECT", { exact: true }),
+    ).toBeVisible();
+    await page.reload();
+    await expect(
+      page.getByRole("button", { name: "Reopen project", exact: true }),
+    ).toBeVisible();
+    await page.goto(`/#/${design}/completed`);
+    await page.getByRole("tab", { name: /^Projects/ }).click();
+    await expect(page.locator(".completed-project strong")).toHaveText(
+      "A finished project",
+    );
+    await page.getByRole("tab", { name: /^Items/ }).click();
+    await page
+      .getByRole("button", { name: "Put back One final step", exact: true })
+      .click();
+    await page.goto(`/#/${design}/focus`);
+    await expect(
+      page.getByRole("heading", { name: "One final step", exact: true }),
+    ).toBeVisible();
+    await page.goto(projectUrl);
+    await expect(
+      page.getByText("ACTIVE PROJECT", { exact: true }),
+    ).toBeVisible();
+    await expect(page.locator(".project-item")).toHaveCount(1);
+    await expect(page.locator(".item-title")).toHaveText("One final step");
+    await page.goto(`/#/${design}/focus`);
+    await page.getByRole("button", { name: /Completed!/ }).click();
+    await page.goto(projectUrl);
+    await expect(
+      page.getByText("ACTIVE PROJECT", { exact: true }),
+    ).toBeVisible();
+  });
+}
+
+test("explicit project completion explains remaining items and can be cancelled or reopened", async ({
   page,
 }) => {
-  await page.goto("/#/still/settings");
+  await page.goto("/#/still/project/demo-dinner");
   await page
-    .getByRole("button", { name: "Reset workspace", exact: true })
+    .getByRole("button", { name: "Mark project complete", exact: true })
     .click();
-  await page.getByRole("button", { name: "Reset everything" }).click();
-  await page.goto("/#/still/projects");
-  await page
-    .locator(".page-heading")
-    .getByRole("button", { name: "Add project", exact: true })
+  const dialog = page.getByRole("dialog");
+  await expect(dialog).toContainText(
+    "mark the project and its remaining items as completed",
+  );
+  await dialog
+    .getByRole("button", { name: "Keep project open", exact: true })
     .click();
+  await expect(page.locator(".project-item")).toHaveCount(5);
   await page
-    .getByLabel("Project name", { exact: true })
-    .fill("A finished project");
-  await page.getByRole("button", { name: "Create project" }).click();
-  const projectUrl = page.url();
-  await page.getByRole("button", { name: "Add a little step" }).click();
-  await page.getByLabel("What would you like to do?").fill("One final step");
-  await page
-    .getByRole("dialog")
-    .getByRole("button", { name: "Add item", exact: true })
+    .getByRole("button", { name: "Mark project complete", exact: true })
     .click();
-  await page.goto("/#/still/focus");
-  await page.getByRole("button", { name: /Completed!/ }).click();
+  await dialog
+    .getByRole("button", { name: "Mark project complete", exact: true })
+    .click();
+  await expect(
+    page.getByText("COMPLETED PROJECT", { exact: true }),
+  ).toBeVisible();
+  await expect(page.locator(".project-item")).toHaveCount(0);
   await page.goto("/#/still/completed");
-  await page
-    .getByRole("button", { name: "Put back One final step", exact: true })
-    .click();
+  await expect(page.locator(".completed-row")).toHaveCount(5);
   await page.goto("/#/still/focus");
   await expect(
-    page.getByRole("heading", { name: "One final step", exact: true }),
+    page.getByRole("heading", { name: "Water the plants", exact: true }),
   ).toBeVisible();
-  await page.goto(projectUrl);
+  await page.goto("/#/still/project/demo-dinner");
+  await page
+    .getByRole("button", { name: "Reopen project", exact: true })
+    .click();
   await expect(page.getByText("ACTIVE PROJECT", { exact: true })).toBeVisible();
-  await expect(page.locator(".project-item")).toHaveCount(1);
-  await expect(page.locator(".item-title")).toHaveText("One final step");
+  await page.reload();
+  await expect(page.getByText("ACTIVE PROJECT", { exact: true })).toBeVisible();
+  await expect(page.locator(".project-item")).toHaveCount(0);
 });
 
 for (const design of ["still", "ember", "orbit", "tide", "pop"]) {

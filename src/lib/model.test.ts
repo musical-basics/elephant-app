@@ -121,15 +121,78 @@ describe('completion and project lifecycle', () => {
     expect(next.queue[0].id).not.toBe('a');
   });
 
-  it('finishes a nonempty project after its final item, and reopens it on adding', () => {
+  it('keeps a project active after its final item and queues a later addition', () => {
     let state: AppState = { ...createEmptyState(), projects: [project('p')], items: [item('p1', 'p')], queue: [slot('a', 'p')] };
+    const originalProjects = state.projects;
     state = completeCurrent(state);
-    expect(state.projects[0]).toMatchObject({ status: 'completed' });
-    expect(state.projects[0].completedAt).toBeTruthy();
+    expect(state.projects).toBe(originalProjects);
+    expect(state.projects[0]).toMatchObject({ status: 'active', completedAt: null });
+    expect(state.items[0].completedAt).toBeTruthy();
     expect(state.queue).toHaveLength(0);
+    expect(validateImport(JSON.parse(JSON.stringify(state)))).toEqual(state);
     state = addItem(state, 'Another small step', 'p');
     expect(state.projects[0]).toMatchObject({ status: 'active', completedAt: null });
     expect(resolveQueue(state)[0].item.title).toBe('Another small step');
+  });
+
+  it.each(['active', 'inactive'] as const)('explicitly completes an %s project and its unfinished items without reprocessing other projects', (status) => {
+    const state = sample();
+    state.projects[0] = project('p', status);
+    state.projects.push(project('q'));
+    state.items.push(
+      { ...item('p-done', 'p'), completedAt: timestamp },
+      item('q1', 'q'), item('q2', 'q'),
+      { ...item('q-done', 'q'), completedAt: timestamp },
+    );
+    if (status === 'inactive') state.queue = state.queue.filter((entry) => entry.kind !== 'project');
+    state.queue.unshift(slot('q-slot', 'q'));
+    const original = structuredClone(state);
+    const next = updateProject(state, 'p', { status: 'completed' });
+    const completedProject = next.projects[0];
+    expect(completedProject.status).toBe('completed');
+    expect(completedProject.completedAt).toBeTruthy();
+    for (const pending of state.items.filter((entry) => entry.projectId === 'p' && !entry.completedAt)) {
+      expect(next.items.find((entry) => entry.id === pending.id)).toEqual({ ...pending, completedAt: completedProject.completedAt });
+    }
+    expect(next.items.find((entry) => entry.id === 'p-done')).toBe(state.items.find((entry) => entry.id === 'p-done'));
+    expect(next.items.find((entry) => entry.id === 'q-done')).toBe(state.items.find((entry) => entry.id === 'q-done'));
+    expect(next.projects[1]).toBe(state.projects[1]);
+    expect(next.queue).toEqual(state.queue.filter((entry) => entry.kind !== 'project' || entry.projectId !== 'p'));
+    expect(next.queue.map((entry) => entry.id)).toEqual(['q-slot', 'slot-e1', 'slot-e2', 'slot-e3', 'slot-e4']);
+    expect(reprocess(next).queue).toHaveLength(next.queue.length + 1);
+    expect(state).toEqual(original);
+    expect(validateImport(JSON.parse(JSON.stringify(next)))).toEqual(next);
+  });
+
+  it.each([false, true])('explicitly completes a project with all steps already done = %s, including an empty project', (hasCompletedSteps) => {
+    const state: AppState = {
+      ...createEmptyState(),
+      projects: [project('p')],
+      items: [...(hasCompletedSteps ? [{ ...item('p1', 'p'), completedAt: timestamp }] : []), item('e1', null)],
+      queue: [errand('e1')],
+    };
+    const next = updateProject(state, 'p', { status: 'completed' });
+    expect(next.projects[0].status).toBe('completed');
+    expect(next.projects[0].completedAt).toBeTruthy();
+    expect(next.items).toEqual(state.items);
+    expect(next.queue).toEqual(state.queue);
+    expect(validateImport(JSON.parse(JSON.stringify(next)))).toEqual(next);
+  });
+
+  it('supports explicitly reopening or adding to a manually completed project while preserving item history', () => {
+    const manuallyCompleted = updateProject(sample(), 'p', { status: 'completed' });
+    const reopened = updateProject(manuallyCompleted, 'p', { status: 'active' });
+    expect(reopened.projects[0]).toMatchObject({ status: 'active', completedAt: null });
+    expect(reopened.items).toBe(manuallyCompleted.items);
+    expect(reopened.queue).toEqual(manuallyCompleted.queue);
+    const withNewItem = addItem(manuallyCompleted, 'Another small step', 'p');
+    expect(withNewItem.projects[0]).toMatchObject({ status: 'active', completedAt: null });
+    expect(withNewItem.items.slice(0, manuallyCompleted.items.length)).toEqual(manuallyCompleted.items);
+    expect(withNewItem.queue.slice(0, manuallyCompleted.queue.length)).toEqual(manuallyCompleted.queue);
+    expect(resolveQueue(withNewItem).at(-1)?.item.title).toBe('Another small step');
+    expect(manuallyCompleted.projects[0].status).toBe('completed');
+    expect(validateImport(JSON.parse(JSON.stringify(reopened)))).toEqual(reopened);
+    expect(validateImport(JSON.parse(JSON.stringify(withNewItem)))).toEqual(withNewItem);
   });
 
   it('pauses and resumes projects, and preserves unfinished steps', () => {
@@ -260,7 +323,7 @@ describe('putting completed items back', () => {
     expect(validateImport(JSON.parse(JSON.stringify(again)))).toEqual(again);
   });
 
-  it('recompletes a reopened project after its restored final step', () => {
+  it('keeps a reopened project active after completing its restored final step', () => {
     const state: AppState = {
       ...createEmptyState(),
       projects: [project('p', 'completed')],
@@ -268,8 +331,8 @@ describe('putting completed items back', () => {
       queue: [errand('e1')],
     };
     const completed = completeCurrent(putBackItem(state, 'p1'));
-    expect(completed.projects[0].status).toBe('completed');
-    expect(completed.projects[0].completedAt).toBeTruthy();
+    expect(completed.projects[0]).toMatchObject({ status: 'active', completedAt: null });
+    expect(completed.items[0].completedAt).toBeTruthy();
     expect(completed.queue).toEqual(state.queue);
     expect(resolveQueue(completed).map((entry) => entry.item.id)).toEqual(['e1']);
     expect(validateImport(JSON.parse(JSON.stringify(completed)))).toEqual(completed);
