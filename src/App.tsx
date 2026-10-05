@@ -1307,10 +1307,17 @@ export default function App() {
                                   <RotateCcw size={16} />
                                   Put back
                                 </button>
-                                <DuplicateButton
-                                  item={item}
-                                  onDuplicate={() => duplicate(item)}
-                                />
+                                <button
+                                  type="button"
+                                  className="icon-button subtle-delete"
+                                  aria-label={`Delete ${item.title}`}
+                                  title="Remove from completed history"
+                                  onClick={() =>
+                                    setModal({ kind: "delete", item })
+                                  }
+                                >
+                                  <Trash2 size={18} />
+                                </button>
                               </span>
                             </div>
                           ))
@@ -1859,7 +1866,9 @@ export default function App() {
                   : modal.kind === "rename"
                     ? "Edit your item"
                     : modal.kind === "delete"
-                      ? "Remove this item?"
+                      ? modal.item.completedAt
+                        ? "Remove completed item?"
+                        : "Remove this item?"
                       : modal.kind === "deleteProject"
                         ? "Delete this project?"
                         : modal.kind === "completeProject"
@@ -1880,7 +1889,9 @@ export default function App() {
                     : modal.kind === "reset"
                       ? "This deletes all items, projects, and history in this workspace. Export a backup first if you want to keep them."
                       : modal.kind === "delete"
-                        ? "This item will be removed from the project and queue. This can’t be undone."
+                        ? modal.item.completedAt
+                          ? "This permanently removes the item from your completed history. This can’t be undone."
+                          : "This item will be removed from the project and queue. This can’t be undone."
                         : modal.kind === "deleteProject"
                           ? "This permanently deletes the project and its unfinished items, removing them from the active queue. Completed items will stay in your history."
                           : modal.kind === "completeProject"
@@ -2126,6 +2137,11 @@ export default function App() {
           {modal.kind === "delete" && (
             <>
               <p className="confirm-item">{modal.item.title}</p>
+              {formError && (
+                <p className="form-error" role="alert">
+                  {formError}
+                </p>
+              )}
               <div className="sheet-actions">
                 <button
                   className="secondary-button"
@@ -2136,7 +2152,12 @@ export default function App() {
                 <button
                   className="danger-button"
                   onClick={() =>
-                    submit((s) => deleteItem(s, modal.item.id), "Item removed.")
+                    submit(
+                      (s) => deleteItem(s, modal.item.id),
+                      modal.item.completedAt
+                        ? "Completed item removed."
+                        : "Item removed.",
+                    )
                   }
                 >
                   <Trash2 size={17} />

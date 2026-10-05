@@ -1408,6 +1408,10 @@ button {
   min-height: 44px;
   font-size: 12px;
 }
+.completed-actions .icon-button {
+  min-width: 44px;
+  min-height: 44px;
+}
 .completed-project {
   width: 100%;
   text-align: left;

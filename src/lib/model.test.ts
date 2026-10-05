@@ -346,6 +346,47 @@ describe('putting completed items back', () => {
   });
 });
 
+describe('deleting completed items', () => {
+  it.each([
+    ['an active project', 'p-done'],
+    ['a manually completed project', 'completed-done'],
+    ['a deleted project', 'former-done'],
+    ['an errand', 'errand-done'],
+  ])('removes only the completed history entry from %s', (_kind, targetId) => {
+    const state = sample();
+    state.projects.push(project('completed', 'completed'), project('upcoming', 'inactive'));
+    state.items.push(
+      { ...item('p-done', 'p'), completedAt: timestamp },
+      { ...item('completed-done', 'completed'), completedAt: timestamp },
+      item('upcoming-step', 'upcoming'),
+      { ...item('upcoming-done', 'upcoming'), completedAt: timestamp },
+      { ...item('former-done', null), completedAt: timestamp, deletedProjectName: 'An earlier project' },
+      { ...item('errand-done', null), completedAt: timestamp },
+    );
+    state.queue = state.queue.filter((entry) => entry.id !== 'b' && entry.id !== 'c');
+    const original = structuredClone(state);
+    expect(validateImport(JSON.parse(JSON.stringify(state)))).toEqual(state);
+    const next = deleteItem(state, targetId);
+
+    expect(next.items).toEqual(state.items.filter((entry) => entry.id !== targetId));
+    expect(next.items).toHaveLength(state.items.length - 1);
+    for (const entry of next.items) expect(entry).toBe(state.items.find((old) => old.id === entry.id));
+    expect(next.items.filter((entry) => entry.completedAt)).toEqual(state.items.filter((entry) => entry.completedAt && entry.id !== targetId));
+    expect(next.projects).toBe(state.projects);
+    expect(next.projects.find((entry) => entry.id === 'completed')).toMatchObject({ status: 'completed', completedAt: timestamp });
+    expect(next.queue).toEqual(state.queue);
+    next.queue.forEach((entry, index) => expect(entry).toBe(state.queue[index]));
+    expect(resolveQueue(next).map((entry) => entry.item.id)).toEqual(resolveQueue(state).map((entry) => entry.item.id));
+    // The active project could gain a slot, but history deletion must not
+    // reprocess it or change what the user will see next.
+    expect(reprocess(next).queue).toHaveLength(next.queue.length + 1);
+    expect(next.profile).toBe(state.profile);
+    expect(next.settings).toBe(state.settings);
+    expect(state).toEqual(original);
+    expect(validateImport(JSON.parse(JSON.stringify(next)))).toEqual(next);
+  });
+});
+
 describe('deleting projects', () => {
   it('removes unfinished steps and slots while keeping completed history and other queue entries', () => {
     const state = sample();

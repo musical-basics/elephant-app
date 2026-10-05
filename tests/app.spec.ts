@@ -321,7 +321,7 @@ test("duplicate an errand from the master list and keep both copies after reload
   ).toBe(true);
 });
 
-test("duplicate the focused item and completed items without changing their originals", async ({
+test("duplicate the focused item and project steps without changing their originals", async ({
   page,
 }) => {
   const title = "Write a few ideas for Sunday dinner";
@@ -334,15 +334,15 @@ test("duplicate the focused item and completed items without changing their orig
   ).toBeVisible();
   await page.getByRole("button", { name: /Completed!/ }).click();
   await page.goto("/#/tide/completed");
-  await page
-    .getByRole("button", { name: `Duplicate ${title}`, exact: true })
-    .click();
+  await expect(page.getByRole("button", { name: /^Duplicate / })).toHaveCount(
+    0,
+  );
   await expect(page.locator(".completed-row")).toHaveCount(1);
   await expect(page.locator(".completed-row strong")).toHaveText(title);
   await page.goto("/#/tide/project/demo-dinner");
   await expect(
     page.locator(".project-item .item-title").filter({ hasText: title }),
-  ).toHaveCount(2);
+  ).toHaveCount(1);
   await page.locator(".finished-details summary").click();
   await page
     .locator(".finished-step")
@@ -352,7 +352,7 @@ test("duplicate the focused item and completed items without changing their orig
   await page.reload();
   await expect(
     page.locator(".project-item .item-title").filter({ hasText: title }),
-  ).toHaveCount(3);
+  ).toHaveCount(2);
 });
 
 test("five design options open the corresponding working app", async ({
