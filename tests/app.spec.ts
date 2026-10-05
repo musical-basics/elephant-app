@@ -436,6 +436,9 @@ test("taking a bite preserves the current item until explicitly completed and pe
     .getByRole("button", { name: "Projects", exact: true })
     .click();
   await page
+    .getByRole("button", { name: "View projects", exact: true })
+    .click();
+  await page
     .getByRole("button", {
       name: "Open project Plan a Sunday dinner",
       exact: true,

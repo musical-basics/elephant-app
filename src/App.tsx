@@ -73,6 +73,7 @@ import { useCountdown } from "./lib/useCountdown";
 type Screen =
   | "home"
   | "focus"
+  | "projects-home"
   | "projects"
   | "project"
   | "completed"
@@ -108,6 +109,7 @@ function readRoute(): Route {
     screen: ([
       "home",
       "focus",
+      "projects-home",
       "projects",
       "project",
       "completed",
@@ -148,9 +150,6 @@ export default function App() {
   const [formError, setFormError] = useState("");
   const [toast, setToast] = useState("");
   const [projectTab, setProjectTab] = useState<"active" | "inactive">("active");
-  const [completedTab, setCompletedTab] = useState<"items" | "projects">(
-    "items",
-  );
   const [sort, setSort] = useState("name");
   const [search, setSearch] = useState("");
   const [selectedItem, setSelectedItem] = useState<string | null>(null);
@@ -168,6 +167,18 @@ export default function App() {
     | "completedProjects"
   >("completed");
   const { design: designId, screen, projectId } = route;
+  const completedTab =
+    screen === "completed" && projectId === "projects" ? "projects" : "items";
+  const screenTitle =
+    screen === "focus"
+      ? "Do now"
+      : screen === "projects-home"
+        ? "Projects"
+        : screen === "project"
+          ? "Project details"
+          : screen === "queue"
+            ? "Master list"
+            : screen.charAt(0).toUpperCase() + screen.slice(1);
   const design = designs.find((d) => d.id === designId) ?? designs[0];
   const queue = resolveQueue(state);
   const current = queue[0];
@@ -201,9 +212,9 @@ export default function App() {
   }, []);
   useEffect(() => {
     document.title = designId
-      ? `Elephant · ${design.name} · ${screen === "focus" ? "Do now" : screen.charAt(0).toUpperCase() + screen.slice(1)}`
+      ? `Elephant · ${design.name} · ${screenTitle}`
       : "Elephant — Five fresh perspectives";
-  }, [designId, design.name, screen]);
+  }, [designId, design.name, screenTitle]);
   useEffect(() => {
     if (!toast) return;
     const timer = window.setTimeout(() => setToast(""), 4500);
@@ -310,7 +321,7 @@ export default function App() {
   const links: { screen: Screen; label: string; icon: ReactNode }[] = [
     { screen: "home", label: "Home", icon: <Home size={20} /> },
     { screen: "focus", label: "Do now", icon: <Circle size={20} /> },
-    { screen: "projects", label: "Projects", icon: <Layers size={20} /> },
+    { screen: "projects-home", label: "Projects", icon: <Layers size={20} /> },
     {
       screen: "completed",
       label: "Completed",
@@ -328,7 +339,8 @@ export default function App() {
           onClick={() => navigate(link.screen)}
           aria-current={
             screen === link.screen ||
-            (screen === "project" && link.screen === "projects")
+            ((screen === "project" || screen === "projects") &&
+              link.screen === "projects-home")
               ? "page"
               : undefined
           }
@@ -418,15 +430,7 @@ export default function App() {
             <div className="desktop-breadcrumb">
               <span>Your space</span>
               <ChevronRight size={13} />
-              <strong>
-                {screen === "focus"
-                  ? "Do now"
-                  : screen === "project"
-                    ? "Project details"
-                    : screen === "queue"
-                      ? "Master list"
-                      : screen.charAt(0).toUpperCase() + screen.slice(1)}
-              </strong>
+              <strong>{screenTitle}</strong>
             </div>
             <div className="header-actions">
               <span className="local-badge">
@@ -635,7 +639,7 @@ export default function App() {
                     <div className="home-links">
                       <button
                         className="home-link"
-                        onClick={() => navigate("projects")}
+                        onClick={() => navigate("projects-home")}
                       >
                         <span className="link-icon">
                           <Layers size={21} />
@@ -835,8 +839,65 @@ export default function App() {
                 </div>
               )}
 
+              {screen === "projects-home" && (
+                <>
+                  <header className="page-heading">
+                    <h1>Projects</h1>
+                  </header>
+                  <div className="projects-menu">
+                    <button
+                      type="button"
+                      className="projects-menu-button"
+                      onClick={() => setModal({ kind: "project" })}
+                    >
+                      <span className="project-glyph">
+                        <Plus size={22} />
+                      </span>
+                      <span>Add project</span>
+                      <ChevronRight size={20} />
+                    </button>
+                    <button
+                      type="button"
+                      className="projects-menu-button"
+                      onClick={() => {
+                        setProjectTab("active");
+                        navigate("projects");
+                      }}
+                    >
+                      <span className="project-glyph">
+                        <Layers size={22} />
+                      </span>
+                      <span>View projects</span>
+                      <ChevronRight size={20} />
+                    </button>
+                    <button
+                      type="button"
+                      className="projects-menu-button"
+                      onClick={() => {
+                        setSearch("");
+                        navigate("completed", "projects");
+                      }}
+                    >
+                      <span className="project-glyph">
+                        <CircleCheck size={22} />
+                      </span>
+                      <span>View completed projects</span>
+                      <ChevronRight size={20} />
+                    </button>
+                  </div>
+                </>
+              )}
+
               {screen === "projects" && (
                 <>
+                  <button
+                    type="button"
+                    className="text-button projects-menu-back"
+                    onClick={() => navigate("projects-home")}
+                  >
+                    <ArrowLeft size={17} />
+                    Back to Projects
+                  </button>
                   <PageHeading
                     eyebrow="ROOM FOR THE BIGGER PICTURE"
                     title="Your projects"
@@ -1005,12 +1066,13 @@ export default function App() {
                       <button
                         className="text-button page-back"
                         onClick={() => {
-                          if (project.status === "completed")
-                            setCompletedTab("projects");
                           navigate(
                             project.status === "completed"
                               ? "completed"
                               : "projects",
+                            project.status === "completed"
+                              ? "projects"
+                              : undefined,
                           );
                         }}
                       >
@@ -1270,14 +1332,14 @@ export default function App() {
                       <button
                         role="tab"
                         aria-selected={completedTab === "items"}
-                        onClick={() => setCompletedTab("items")}
+                        onClick={() => navigate("completed")}
                       >
                         Items<span>{completedItems.length}</span>
                       </button>
                       <button
                         role="tab"
                         aria-selected={completedTab === "projects"}
-                        onClick={() => setCompletedTab("projects")}
+                        onClick={() => navigate("completed", "projects")}
                       >
                         Projects
                         <span>
@@ -2147,8 +2209,7 @@ export default function App() {
                       setToast("Project deleted. Completed items kept.");
                       if (screen === "project") {
                         if (modal.project.status === "completed") {
-                          setCompletedTab("projects");
-                          navigate("completed");
+                          navigate("completed", "projects");
                         } else {
                           setProjectTab(modal.project.status);
                           navigate("projects");

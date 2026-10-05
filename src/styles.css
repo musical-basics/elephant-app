@@ -764,6 +764,43 @@ button {
   font-size: 11px;
   color: var(--ink);
 }
+.projects-menu {
+  display: grid;
+  gap: 14px;
+  max-width: 560px;
+}
+.projects-menu-button {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  min-height: 80px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+  text-align: left;
+  font-size: 15px;
+}
+.projects-menu-button:hover {
+  background: var(--soft);
+  border-color: var(--accent);
+}
+.projects-menu-button .project-glyph,
+.projects-menu-button > svg {
+  flex-shrink: 0;
+}
+.projects-menu-button > span:not(.project-glyph) {
+  flex: 1;
+  min-width: 0;
+}
+.projects-menu-button > svg {
+  color: var(--muted);
+}
+.projects-menu-back {
+  min-height: 44px;
+  margin-bottom: 12px;
+}
 .project-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
