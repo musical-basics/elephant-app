@@ -1249,7 +1249,10 @@ export default function App() {
                                 <p>
                                   {state.projects.find(
                                     (p) => p.id === item.projectId,
-                                  )?.name || "Errand"}
+                                  )?.name ||
+                                    (item.deletedProjectName
+                                      ? `${item.deletedProjectName} (deleted project)`
+                                      : "Errand")}
                                 </p>
                                 <time dateTime={item.completedAt!}>
                                   {formatDate(item.completedAt!, true)}
@@ -1844,7 +1847,7 @@ export default function App() {
                       : modal.kind === "delete"
                         ? "This item will be removed from the project and queue. This can’t be undone."
                         : modal.kind === "deleteProject"
-                          ? "This permanently deletes the project and all its items, including completed history. This can’t be undone."
+                          ? "This permanently deletes the project and its unfinished items, removing them from the active queue. Completed items will stay in your history."
                           : undefined
           }
           onClose={() => {
@@ -2010,7 +2013,7 @@ export default function App() {
                     try {
                       update((s) => deleteProject(s, modal.project.id));
                       setModal(null);
-                      setToast("Project and its items deleted.");
+                      setToast("Project deleted. Completed items kept.");
                       if (screen === "project") {
                         if (modal.project.status === "completed") {
                           setCompletedTab("projects");

@@ -15,6 +15,7 @@ export interface Item {
   title: string;
   createdAt: string;
   completedAt: string | null;
+  deletedProjectName?: string;
 }
 
 export type QueueSlot =
@@ -170,13 +171,16 @@ export function updateProject(state: AppState, projectId: string, patch: Partial
   return { ...next, queue };
 }
 
-/** Remove a project and its full history without changing other queue entries. */
+/** Remove unfinished project work while keeping completed items as named history. */
 export function deleteProject(state: AppState, projectId: string): AppState {
-  if (!state.projects.some((project) => project.id === projectId)) return state;
+  const project = state.projects.find((entry) => entry.id === projectId);
+  if (!project) return state;
   return {
     ...state,
     projects: state.projects.filter((project) => project.id !== projectId),
-    items: state.items.filter((item) => item.projectId !== projectId),
+    items: state.items.flatMap((item): Item[] => item.projectId !== projectId
+      ? [item]
+      : item.completedAt ? [{ ...item, projectId: null, deletedProjectName: project.name }] : []),
     queue: state.queue.filter((slot) => slot.kind !== 'project' || slot.projectId !== projectId),
   };
 }
@@ -385,7 +389,8 @@ export function validateImport(input: unknown): AppState {
   });
   const items = array(data.items, 'items').map((value): Item => {
     const item = record(value, 'item');
-    return { id: string(item.id, 'item ID'), projectId: item.projectId === null ? null : string(item.projectId, 'item projectId'), title: string(item.title, 'item title'), createdAt: timestamp(item.createdAt, 'item createdAt'), completedAt: nullableTimestamp(item.completedAt, 'item completedAt') };
+    const deletedProjectName = item.deletedProjectName === undefined ? undefined : string(item.deletedProjectName, 'deleted project name');
+    return { id: string(item.id, 'item ID'), projectId: item.projectId === null ? null : string(item.projectId, 'item projectId'), title: string(item.title, 'item title'), createdAt: timestamp(item.createdAt, 'item createdAt'), completedAt: nullableTimestamp(item.completedAt, 'item completedAt'), ...(deletedProjectName === undefined ? {} : { deletedProjectName }) };
   });
   const queue = array(data.queue, 'queue').map((value): QueueSlot => {
     const slot = record(value, 'queue slot');
@@ -437,7 +442,7 @@ export function exportCsv(state: AppState, list: 'queue' | 'completed' | 'active
   if (list === 'completed') items = items.filter((item) => item.completedAt);
   const rows = [
     ['Title', 'Project', 'Status', 'Created at', 'Completed at'],
-    ...items.map((item) => [item.title, item.projectId ? projects.get(item.projectId)?.name ?? '' : '', item.completedAt ? 'Completed' : item.projectId && projects.get(item.projectId)?.status === 'inactive' ? 'Inactive' : 'Active', item.createdAt, item.completedAt ?? '']),
+    ...items.map((item) => [item.title, (item.projectId ? projects.get(item.projectId)?.name : undefined) ?? item.deletedProjectName ?? '', item.completedAt ? 'Completed' : item.projectId && projects.get(item.projectId)?.status === 'inactive' ? 'Inactive' : 'Active', item.createdAt, item.completedAt ?? '']),
   ];
   return rows.map((row) => row.map(csvCell).join(',')).join('\r\n');
 }

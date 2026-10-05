@@ -284,8 +284,9 @@ describe('putting completed items back', () => {
 });
 
 describe('deleting projects', () => {
-  it('removes every project step and slot while preserving other history and queue order', () => {
+  it('removes unfinished steps and slots while keeping completed history and other queue entries', () => {
     const state = sample();
+    state.projects[0].name = 'Sunday dinner';
     state.projects.push(project('q'));
     state.items.push(
       { ...item('p-done', 'p'), completedAt: timestamp },
@@ -299,7 +300,10 @@ describe('deleting projects', () => {
     const next = deleteProject(state, 'p');
 
     expect(next.projects).toEqual([state.projects[1]]);
-    expect(next.items.map((entry) => entry.id)).toEqual(['e1', 'e2', 'e3', 'e4', 'q1', 'q2', 'q-done', 'errand-done']);
+    expect(next.items.map((entry) => entry.id)).toEqual(['e1', 'e2', 'e3', 'e4', 'p-done', 'q1', 'q2', 'q-done', 'errand-done']);
+    expect(next.items.find((entry) => entry.id === 'p-done')).toEqual({ ...state.items.find((entry) => entry.id === 'p-done'), projectId: null, deletedProjectName: 'Sunday dinner' });
+    expect(next.items.find((entry) => entry.id === 'q-done')).toBe(state.items.find((entry) => entry.id === 'q-done'));
+    expect(next.items.find((entry) => entry.id === 'errand-done')).toBe(state.items.find((entry) => entry.id === 'errand-done'));
     expect(next.queue.map((entry) => entry.id)).toEqual(['q-slot', 'slot-e1', 'slot-e2', 'slot-e3', 'slot-e4']);
     expect(resolveQueue(next).map((entry) => entry.item.id)).toEqual(['q1', 'e1', 'e2', 'e3', 'e4']);
     // Project q qualifies for insertion after removal, but deletion must not
@@ -314,7 +318,7 @@ describe('deleting projects', () => {
     expect(validateImport(JSON.parse(JSON.stringify(next)))).toEqual(next);
   });
 
-  it.each(['inactive', 'completed'] as const)('deletes an %s project and its items without touching the active queue', (status) => {
+  it.each(['inactive', 'completed'] as const)('deletes an %s project but keeps its completed items without touching the active queue', (status) => {
     const state = sample();
     state.projects.push(project('removed', status));
     state.items.push({ ...item('removed-1', 'removed'), completedAt: status === 'completed' ? timestamp : null });
@@ -322,10 +326,71 @@ describe('deleting projects', () => {
     const original = structuredClone(state);
     const next = deleteProject(state, 'removed');
     expect(next.projects).toEqual([state.projects[0]]);
-    expect(next.items).toEqual(sample().items);
+    const keptHistory = state.items.filter((entry) => entry.projectId === 'removed' && entry.completedAt)
+      .map((entry) => ({ ...entry, projectId: null, deletedProjectName: 'removed' }));
+    expect(next.items).toEqual([...sample().items, ...keptHistory]);
     expect(next.queue).toEqual(state.queue);
     expect(state).toEqual(original);
     expect(validateImport(JSON.parse(JSON.stringify(next)))).toEqual(next);
+  });
+
+  it('restores retained history as an errand and safely completes it again', () => {
+    const state: AppState = {
+      ...createEmptyState(),
+      projects: [{ ...project('p'), name: 'A finished chapter' }],
+      items: [item('p1', 'p'), { ...item('p-done', 'p'), completedAt: timestamp }, item('e1', null)],
+      queue: [slot('p-slot', 'p'), errand('e1')],
+    };
+    const deleted = deleteProject(state, 'p');
+    const retained = deleted.items.find((entry) => entry.id === 'p-done')!;
+    expect(retained).toEqual({ ...state.items[1], projectId: null, deletedProjectName: 'A finished chapter' });
+    expect(resolveQueue(deleted).map((entry) => entry.item.id)).toEqual(['e1']);
+    const restored = putBackItem(deleted, retained.id);
+    expect(resolveQueue(restored)[0]).toMatchObject({ item: { ...retained, completedAt: null }, project: null, slot: { kind: 'errand', itemId: retained.id } });
+    expect(restored.queue.slice(1)).toEqual(deleted.queue);
+    expect(restored.projects).toHaveLength(0);
+    expect(validateImport(JSON.parse(JSON.stringify(restored)))).toEqual(restored);
+    const completed = completeCurrent(restored);
+    expect(completed.items.find((entry) => entry.id === retained.id)).toMatchObject({ id: retained.id, title: retained.title, createdAt: retained.createdAt, projectId: null, deletedProjectName: 'A finished chapter' });
+    expect(completed.items.find((entry) => entry.id === retained.id)?.completedAt).toBeTruthy();
+    expect(completed.queue).toEqual(deleted.queue);
+    expect(completed.projects).toHaveLength(0);
+    expect(validateImport(JSON.parse(JSON.stringify(completed)))).toEqual(completed);
+  });
+
+  it('duplicates retained history as a new unfinished errand without changing the archived original', () => {
+    const state: AppState = {
+      ...createEmptyState(),
+      projects: [project('p', 'completed')],
+      items: [{ ...item('p-done', 'p'), completedAt: timestamp }, item('e1', null)],
+      queue: [errand('e1')],
+    };
+    const deleted = deleteProject(state, 'p');
+    const original = deleted.items[0];
+    const duplicated = duplicateItem(deleted, original.id);
+    const copy = duplicated.items.at(-1)!;
+    expect(copy).toMatchObject({ title: original.title, projectId: null, completedAt: null });
+    expect(copy.id).not.toBe(original.id);
+    expect(copy.deletedProjectName).toBeUndefined();
+    expect(duplicated.items[0]).toBe(original);
+    expect(original.completedAt).toBe(timestamp);
+    expect(duplicated.queue.slice(0, deleted.queue.length)).toEqual(deleted.queue);
+    expect(duplicated.queue.at(-1)).toMatchObject({ kind: 'errand', itemId: copy.id });
+    expect(duplicated.projects).toHaveLength(0);
+    expect(validateImport(JSON.parse(JSON.stringify(duplicated)))).toEqual(duplicated);
+  });
+
+  it('keeps the former project label in CSV exports and escapes formula-like labels', () => {
+    const state: AppState = {
+      ...createEmptyState(),
+      projects: [{ ...project('p', 'completed'), name: '=HYPERLINK("old project")' }],
+      items: [{ ...item('p-done', 'p'), completedAt: timestamp }],
+    };
+    const deleted = deleteProject(state, 'p');
+    for (const list of ['completed', 'items'] as const) {
+      expect(exportCsv(deleted, list)).toContain('"p-done","\'=HYPERLINK(""old project"")","Completed"');
+    }
+    expect(exportCsv(putBackItem(deleted, 'p-done'), 'queue')).toContain('"p-done","\'=HYPERLINK(""old project"")","Active"');
   });
 
   it('deletes an empty project and leaves an importable empty workspace', () => {
@@ -500,6 +565,19 @@ describe('backup validation and CSV safety', () => {
   it('round trips demo and empty states without changing their content', () => {
     for (const state of [createEmptyState(), createDemoState(), sample()]) {
       expect(validateImport(JSON.parse(JSON.stringify(state)))).toEqual(state);
+    }
+  });
+
+  it('accepts v1 backups with or without deleted-project history metadata and rejects invalid labels', () => {
+    const oldState = sample();
+    const oldRestored = validateImport(JSON.parse(JSON.stringify(oldState)));
+    expect(oldRestored).toEqual(oldState);
+    expect(oldRestored.items[0]).not.toHaveProperty('deletedProjectName');
+    const history = { ...item('kept', null), completedAt: timestamp, deletedProjectName: 'A previous project' };
+    const newState = { ...createEmptyState(), items: [history] };
+    expect(validateImport(JSON.parse(JSON.stringify(newState)))).toEqual(newState);
+    for (const deletedProjectName of ['', '   ', null, 42, ['A previous project']]) {
+      expect(() => validateImport({ ...newState, items: [{ ...history, deletedProjectName }] })).toThrow(/deleted project name/);
     }
   });
 

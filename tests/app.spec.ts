@@ -609,10 +609,12 @@ test("profile photo upload survives reload and can be removed", async ({
 });
 
 for (const design of ["still", "ember", "orbit", "tide", "pop"]) {
-  test(`${design}: delete active and upcoming projects from their cards`, async ({
+  test(`${design}: delete active and upcoming projects from their cards while keeping completed items`, async ({
     page,
   }) => {
     await page.setViewportSize({ width: 320, height: 740 });
+    await page.goto(`/#/${design}/focus`);
+    await page.getByRole("button", { name: /Completed!/ }).click();
     await page.goto(`/#/${design}/projects`);
     const openDinner = page.getByRole("button", {
       name: "Open project Plan a Sunday dinner",
@@ -628,7 +630,9 @@ for (const design of ["still", "ember", "orbit", "tide", "pop"]) {
     await expect(
       dialog.getByText("Plan a Sunday dinner", { exact: true }),
     ).toBeVisible();
-    await expect(dialog).toContainText("including completed history");
+    await expect(dialog).toContainText(
+      "Completed items will stay in your history.",
+    );
     await dialog
       .getByRole("button", { name: "Keep project", exact: true })
       .click();
@@ -670,10 +674,22 @@ for (const design of ["still", "ember", "orbit", "tide", "pop"]) {
         () => document.documentElement.scrollWidth <= window.innerWidth,
       ),
     ).toBe(true);
+    await page.goto(`/#/${design}/completed`);
+    await expect(page.locator(".completed-row strong")).toHaveText(
+      "Write a few ideas for Sunday dinner",
+    );
+    await expect(page.locator(".completed-row p")).toHaveText(
+      "Plan a Sunday dinner (deleted project)",
+    );
+    expect(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth <= window.innerWidth,
+      ),
+    ).toBe(true);
   });
 }
 
-test("delete from project details removes its completion history and queue entries", async ({
+test("delete from project details removes unfinished items and keeps restorable completion history", async ({
   page,
 }) => {
   await page.goto("/#/still/focus");
@@ -704,9 +720,12 @@ test("delete from project details removes its completion history and queue entri
     }),
   ).toHaveCount(0);
   await page.goto("/#/still/completed");
-  await expect(
-    page.getByText("Your little wins will live here.", { exact: true }),
-  ).toBeVisible();
+  await expect(page.locator(".completed-row strong")).toHaveText(
+    "Write a few ideas for Sunday dinner",
+  );
+  await expect(page.locator(".completed-row p")).toHaveText(
+    "Plan a Sunday dinner (deleted project)",
+  );
   await page.goto("/#/still/queue");
   await expect(
     page.getByRole("heading", { name: "Master list", exact: true }),
@@ -725,6 +744,62 @@ test("delete from project details removes its completion history and queue entri
   await expect(
     page.getByRole("heading", { name: "Water the plants", exact: true }),
   ).toBeVisible();
+  await page.goto("/#/still/settings");
+  const downloaded = page.waitForEvent("download");
+  await page
+    .getByRole("button", { name: "Download backup", exact: true })
+    .click();
+  const backupPath = (await (await downloaded).path())!;
+  const saved = JSON.parse(await readFile(backupPath, "utf8"));
+  expect(
+    saved.projects.some(
+      (project: { id: string }) => project.id === "demo-dinner",
+    ),
+  ).toBe(false);
+  expect(
+    saved.items.filter((item: { id: string }) => item.id.startsWith("dinner-")),
+  ).toEqual([
+    expect.objectContaining({
+      id: "dinner-1",
+      projectId: null,
+      deletedProjectName: "Plan a Sunday dinner",
+      completedAt: expect.any(String),
+    }),
+  ]);
+  await page.getByLabel("Import an Elephant backup").setInputFiles(backupPath);
+  await page
+    .getByRole("button", { name: "Replace current data", exact: true })
+    .click();
+  await page.goto("/#/still/completed");
+  await expect(page.locator(".completed-row p")).toHaveText(
+    "Plan a Sunday dinner (deleted project)",
+  );
+  await page
+    .getByRole("button", {
+      name: "Put back Write a few ideas for Sunday dinner",
+      exact: true,
+    })
+    .click();
+  await expect(page.locator(".completed-row")).toHaveCount(0);
+  await page.goto("/#/still/focus");
+  await page.reload();
+  await expect(
+    page.getByRole("heading", {
+      name: "Write a few ideas for Sunday dinner",
+      exact: true,
+    }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: /Completed!/ }).click();
+  await expect(
+    page.getByRole("heading", { name: "Water the plants", exact: true }),
+  ).toBeVisible();
+  await page.goto("/#/still/projects");
+  await expect(
+    page.getByRole("button", {
+      name: "Open project Plan a Sunday dinner",
+      exact: true,
+    }),
+  ).toHaveCount(0);
 });
 
 test("deleting an upcoming project from details returns to the upcoming list", async ({
