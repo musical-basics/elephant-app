@@ -42,6 +42,7 @@ import {
   Zap,
 } from "lucide-react";
 import DesignGallery from "./components/DesignGallery";
+import FocusTimer from "./components/FocusTimer";
 import { Botanical, Elephant } from "./components/Elephant";
 import Sheet from "./components/Sheet";
 import { designs } from "./lib/designs";
@@ -66,6 +67,7 @@ import {
 } from "./lib/model";
 import type { AppState, Item, Project } from "./lib/model";
 import { useWorkspace } from "./lib/useWorkspace";
+import { useCountdown } from "./lib/useCountdown";
 
 type Screen =
   | "home"
@@ -168,6 +170,11 @@ export default function App() {
   const design = designs.find((d) => d.id === designId) ?? designs[0];
   const queue = resolveQueue(state);
   const current = queue[0];
+  const countdown = useCountdown({
+    itemId: current?.item.id ?? null,
+    scope: `${workspace.mode}:${workspace.userEmail ?? "local"}`,
+    ready: workspace.ready,
+  });
   const project = state.projects.find((p) => p.id === projectId);
   const remainingProjectItems = state.items.filter(
     (item) => item.projectId === project?.id && !item.completedAt,
@@ -689,7 +696,9 @@ export default function App() {
               )}
 
               {screen === "focus" && (
-                <div className="focus-page">
+                <div
+                  className={`focus-page${countdown.timer ? " timer-open" : ""}`}
+                >
                   <div className="focus-top">
                     <button
                       className="text-button"
@@ -743,6 +752,11 @@ export default function App() {
                         </p>
                       </div>
                       <div className="focus-bottom">
+                        <FocusTimer
+                          key={`${workspace.mode}:${workspace.userEmail ?? "local"}:${current.item.id}`}
+                          title={current.item.title}
+                          countdown={countdown}
+                        />
                         <div className="focus-actions">
                           <button
                             className="bite-button"
