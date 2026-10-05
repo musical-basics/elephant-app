@@ -757,10 +757,22 @@ export default function App() {
                           <span className="frame-corner corner-br" />
                         </div>
                         {current.project && (
-                          <p className="focus-project">
-                            <Folder size={15} />
-                            {current.project.name}
-                          </p>
+                          <div className="focus-project">
+                            <p className="focus-project-name">
+                              <Folder size={15} />
+                              <span>{current.project.name}</span>
+                            </p>
+                            <button
+                              type="button"
+                              className="text-button focus-project-link"
+                              onClick={() =>
+                                navigate("project", current.project!.id)
+                              }
+                            >
+                              View project
+                              <ArrowRight size={15} />
+                            </button>
+                          </div>
                         )}
                         <p className="focus-reassurance">
                           Everything else can wait.
@@ -982,6 +994,14 @@ export default function App() {
                 (project ? (
                   <>
                     <div className="project-page-actions">
+                      <button
+                        type="button"
+                        className="text-button project-focus-back"
+                        onClick={() => navigate("focus")}
+                      >
+                        <ArrowLeft size={17} />
+                        Back to Do now
+                      </button>
                       <button
                         className="text-button page-back"
                         onClick={() => {

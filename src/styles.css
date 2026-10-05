@@ -797,9 +797,14 @@ button {
 }
 .project-page-actions {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
+}
+.project-focus-back {
+  min-height: 44px;
+  margin-right: auto;
 }
 .project-delete-action {
   min-height: 44px;
@@ -1203,11 +1208,29 @@ button {
 }
 .focus-project {
   display: flex;
+  flex-wrap: wrap;
   justify-content: center;
   align-items: center;
-  gap: 8px;
+  gap: 0 16px;
   font-size: 12px;
   color: var(--muted);
+}
+.focus-project-name {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  gap: 8px;
+}
+.focus-project-name span {
+  overflow-wrap: anywhere;
+}
+.focus-project-name svg,
+.focus-project-link {
+  flex-shrink: 0;
+}
+.focus-project-link {
+  min-height: 44px;
+  color: var(--accent);
 }
 .focus-reassurance {
   font-size: 10px;
@@ -2784,10 +2807,13 @@ button {
   }
   .focus-project {
     font-size: 10px;
-    gap: 6px;
+    gap: 0 12px;
   }
   .focus-project svg {
     width: 13px;
+  }
+  .project-focus-back {
+    flex-basis: 100%;
   }
   .focus-reassurance {
     font-size: 9px;
