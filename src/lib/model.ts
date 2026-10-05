@@ -139,6 +139,13 @@ export function addItem(state: AppState, value: string, projectId?: string | nul
   return reprocess({ ...state, projects, items, queue });
 }
 
+/** Add an unfinished copy using the same project order and pacing as a new item. */
+export function duplicateItem(state: AppState, itemId: string): AppState {
+  const source = state.items.find((item) => item.id === itemId);
+  if (!source) return state;
+  return addItem(state, source.title, source.projectId, source.projectId ? source.id : undefined);
+}
+
 export function updateProject(state: AppState, projectId: string, patch: Partial<Pick<Project, 'name' | 'status' | 'dueDate'>>): AppState {
   const project = state.projects.find((entry) => entry.id === projectId);
   if (!project) return state;

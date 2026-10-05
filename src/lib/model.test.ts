@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   addItem, addProject, completeCurrent, createDemoState, createEmptyState,
-  deleteItem, deleteProject, exportCsv, moveItem, renameItem, reorderItem, reprocess,
+  deleteItem, deleteProject, duplicateItem, exportCsv, moveItem, renameItem, reorderItem, reprocess,
   resolveQueue, takeBite, updateProject, validateImport, MAX_INLINE_AVATAR_BYTES,
   type AppState, type Item, type Project, type QueueSlot,
 } from './model';
@@ -272,6 +272,98 @@ describe('adding and editing', () => {
     expect(() => renameItem(state, 'p1', '  ')).toThrow();
     expect(() => takeBite(state, 'A bite', '')).toThrow();
     expect(() => addProject(state, '')).toThrow();
+  });
+});
+
+describe('duplicating items', () => {
+  it('inserts an independent unfinished copy immediately after the source project step', () => {
+    const state = sample();
+    const original = structuredClone(state);
+    const before = Date.now();
+    const next = duplicateItem(state, 'p2');
+    const copy = next.items.find((entry) => !state.items.some((old) => old.id === entry.id))!;
+
+    expect(copy).toMatchObject({ title: 'p2', projectId: 'p', completedAt: null });
+    expect(copy.id).not.toBe('p2');
+    expect(new Set(next.items.map((entry) => entry.id)).size).toBe(next.items.length);
+    expect(Date.parse(copy.createdAt)).toBeGreaterThanOrEqual(before);
+    expect(Date.parse(copy.createdAt)).toBeLessThanOrEqual(Date.now());
+    expect(next.items.filter((entry) => entry.projectId === 'p').map((entry) => entry.id)).toEqual(['p1', 'p2', copy.id, 'p3', 'p4']);
+    expect(next.queue).toEqual(state.queue);
+    expect(resolveQueue(next).map((entry) => entry.item.id)).toEqual(['p1', 'e1', 'e2', 'p2', 'e3', 'e4', copy.id]);
+    const renamed = renameItem(next, copy.id, 'A separate copy');
+    expect(renamed.items.find((entry) => entry.id === 'p2')?.title).toBe('p2');
+    expect(next.items.find((entry) => entry.id === 'p2')).toBe(state.items[1]);
+    expect(state).toEqual(original);
+    expect(validateImport(JSON.parse(JSON.stringify(next)))).toEqual(next);
+  });
+
+  it('runs normal insertion when the project is ready for another placeholder', () => {
+    const state = sample();
+    state.queue = state.queue.filter((entry) => entry.id !== 'b' && entry.id !== 'c');
+    const next = duplicateItem(state, 'p1');
+    expect(next.queue).toHaveLength(state.queue.length + 1);
+    expect(next.queue.slice(0, state.queue.length)).toEqual(state.queue);
+    expect(next.queue.at(-1)).toMatchObject({ kind: 'project', projectId: 'p' });
+    expect(resolveQueue(next).at(-1)?.item.title).toBe('p1');
+    expect(resolveQueue(next).at(-1)?.item.id).not.toBe('p1');
+  });
+
+  it('keeps an upcoming project inactive when one of its steps is copied', () => {
+    const state: AppState = { ...createEmptyState(), projects: [project('p', 'inactive')], items: [item('p1', 'p'), item('p2', 'p')] };
+    const next = duplicateItem(state, 'p1');
+    expect(next.projects).toBe(state.projects);
+    expect(next.projects[0].status).toBe('inactive');
+    expect(next.items.map((entry) => entry.title)).toEqual(['p1', 'p1', 'p2']);
+    expect(next.items[1].completedAt).toBeNull();
+    expect(next.queue).toHaveLength(0);
+    expect(validateImport(JSON.parse(JSON.stringify(next)))).toEqual(next);
+  });
+
+  it('reopens a completed project and keeps every original completion record', () => {
+    const state: AppState = {
+      ...createEmptyState(),
+      projects: [project('p', 'completed')],
+      items: [{ ...item('p1', 'p'), completedAt: timestamp }, { ...item('p2', 'p'), completedAt: timestamp }, item('e1', null)],
+      queue: [errand('e1')],
+    };
+    const original = structuredClone(state);
+    const next = duplicateItem(state, 'p1');
+    const copy = next.items[1];
+    expect(copy).toMatchObject({ title: 'p1', projectId: 'p', completedAt: null });
+    expect(copy.id).not.toBe('p1');
+    expect(next.items.map((entry) => entry.id)).toEqual(['p1', copy.id, 'p2', 'e1']);
+    expect(next.items.filter((entry) => entry.completedAt)).toEqual(state.items.filter((entry) => entry.completedAt));
+    expect(next.projects[0]).toMatchObject({ status: 'active', completedAt: null });
+    expect(resolveQueue(next).map((entry) => entry.item.id)).toEqual(['e1', copy.id]);
+    expect(state).toEqual(original);
+    expect(validateImport(JSON.parse(JSON.stringify(next)))).toEqual(next);
+  });
+
+  it.each([false, true])('appends an errand copy to the queue with completed source = %s', (completed) => {
+    const source: Item = { ...item('e1', null), completedAt: completed ? timestamp : null };
+    const state: AppState = {
+      ...createEmptyState(),
+      items: [source, item('e2', null)],
+      queue: [...(completed ? [] : [errand('e1')]), errand('e2')],
+    };
+    const original = structuredClone(state);
+    const next = duplicateItem(state, source.id);
+    const copy = next.items.at(-1)!;
+    expect(copy).toMatchObject({ title: source.title, projectId: null, completedAt: null });
+    expect(copy.id).not.toBe(source.id);
+    expect(copy.createdAt).not.toBe(source.createdAt);
+    expect(next.items[0]).toBe(source);
+    expect(next.queue.slice(0, state.queue.length)).toEqual(state.queue);
+    expect(next.queue.at(-1)).toMatchObject({ kind: 'errand', itemId: copy.id });
+    expect(resolveQueue(next).at(-1)?.item.id).toBe(copy.id);
+    expect(state).toEqual(original);
+    expect(validateImport(JSON.parse(JSON.stringify(next)))).toEqual(next);
+  });
+
+  it('returns the original state for a missing item', () => {
+    const state = sample();
+    expect(duplicateItem(state, 'missing')).toBe(state);
   });
 });
 

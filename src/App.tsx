@@ -18,6 +18,7 @@ import {
   Circle,
   CircleCheck,
   Cloud,
+  Copy,
   Download,
   Folder,
   GripVertical,
@@ -52,6 +53,7 @@ import {
   createEmptyState,
   deleteItem,
   deleteProject,
+  duplicateItem,
   exportCsv,
   moveItem,
   renameItem,
@@ -235,6 +237,9 @@ export default function App() {
     } catch (e) {
       setFormError(e instanceof Error ? e.message : "Please check the fields.");
     }
+  }
+  function duplicate(item: Item) {
+    mutate((s) => duplicateItem(s, item.id), "Item duplicated.");
   }
   function submitForm(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -688,9 +693,17 @@ export default function App() {
                       <ArrowLeft size={17} />
                       Back home
                     </button>
-                    <span className="focus-mode">
-                      <span />A MOMENT OF FOCUS
-                    </span>
+                    <div className="focus-tools">
+                      <span className="focus-mode">
+                        <span />A MOMENT OF FOCUS
+                      </span>
+                      {current && (
+                        <DuplicateButton
+                          item={current.item}
+                          onDuplicate={() => duplicate(current.item)}
+                        />
+                      )}
+                    </div>
                   </div>
                   {current ? (
                     <>
@@ -1076,6 +1089,7 @@ export default function App() {
                             }
                             onRename={() => setModal({ kind: "rename", item })}
                             onDelete={() => setModal({ kind: "delete", item })}
+                            onDuplicate={() => duplicate(item)}
                             onReorder={(direction) =>
                               mutate((s) => reorderItem(s, item.id, direction))
                             }
@@ -1123,6 +1137,10 @@ export default function App() {
                               <CircleCheck size={17} />
                               <span>{item.title}</span>
                               <small>{formatDate(item.completedAt!)}</small>
+                              <DuplicateButton
+                                item={item}
+                                onDuplicate={() => duplicate(item)}
+                              />
                             </div>
                           ))}
                       </details>
@@ -1236,6 +1254,10 @@ export default function App() {
                               <time dateTime={item.completedAt!}>
                                 {formatDate(item.completedAt!, true)}
                               </time>
+                              <DuplicateButton
+                                item={item}
+                                onDuplicate={() => duplicate(item)}
+                              />
                             </div>
                           ))
                       : state.projects
@@ -1345,6 +1367,10 @@ export default function App() {
                         >
                           <Trash2 size={16} />
                         </button>
+                        <DuplicateButton
+                          item={entry.item}
+                          onDuplicate={() => duplicate(entry.item)}
+                        />
                       </div>
                     ))}
                   </div>
@@ -2141,6 +2167,7 @@ function ProjectItem({
   onSelect,
   onRename,
   onDelete,
+  onDuplicate,
   onReorder,
   onMove,
 }: {
@@ -2151,6 +2178,7 @@ function ProjectItem({
   onSelect: () => void;
   onRename: () => void;
   onDelete: () => void;
+  onDuplicate: () => void;
   onReorder: (direction: "up" | "down") => void;
   onMove: (targetId: string) => void;
 }) {
@@ -2220,7 +2248,7 @@ function ProjectItem({
         swiped.current = false;
         if (
           !(e.target as HTMLElement).closest(
-            ".drag-handle, .reorder-buttons, .subtle-delete, .item-number",
+            ".drag-handle, .item-actions, .item-number",
           )
         )
           swipe.current = { x: e.clientX, y: e.clientY };
@@ -2266,32 +2294,56 @@ function ProjectItem({
       >
         {item.title}
       </button>
-      <div className="reorder-buttons">
-        <button
-          className="icon-button"
-          aria-label={`Move ${item.title} up`}
-          disabled={index === 0}
-          onClick={() => onReorder("up")}
-        >
-          <ArrowUp size={15} />
-        </button>
-        <button
-          className="icon-button"
-          aria-label={`Move ${item.title} down`}
-          disabled={index === count - 1}
-          onClick={() => onReorder("down")}
-        >
-          <ArrowDown size={15} />
-        </button>
+      <div className="item-actions">
+        <div className="reorder-buttons">
+          <button
+            className="icon-button"
+            aria-label={`Move ${item.title} up`}
+            disabled={index === 0}
+            onClick={() => onReorder("up")}
+          >
+            <ArrowUp size={15} />
+          </button>
+          <button
+            className="icon-button"
+            aria-label={`Move ${item.title} down`}
+            disabled={index === count - 1}
+            onClick={() => onReorder("down")}
+          >
+            <ArrowDown size={15} />
+          </button>
+        </div>
+        <div className="item-secondary-actions">
+          <DuplicateButton item={item} onDuplicate={onDuplicate} />
+          <button
+            className="icon-button subtle-delete"
+            aria-label={`Delete ${item.title}`}
+            onClick={onDelete}
+          >
+            <Trash2 size={16} />
+          </button>
+        </div>
       </div>
-      <button
-        className="icon-button subtle-delete"
-        aria-label={`Delete ${item.title}`}
-        onClick={onDelete}
-      >
-        <Trash2 size={16} />
-      </button>
     </div>
+  );
+}
+
+function DuplicateButton({
+  item,
+  onDuplicate,
+}: {
+  item: Item;
+  onDuplicate: () => void;
+}) {
+  return (
+    <button
+      className="icon-button duplicate-item"
+      aria-label={`Duplicate ${item.title}`}
+      title="Duplicate item"
+      onClick={onDuplicate}
+    >
+      <Copy size={17} />
+    </button>
   );
 }
 

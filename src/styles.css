@@ -1024,6 +1024,23 @@ button {
   display: flex;
   gap: 0;
 }
+.item-actions,
+.item-secondary-actions,
+.focus-tools {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  flex-shrink: 0;
+}
+.focus-tools {
+  gap: 8px;
+}
+.duplicate-item {
+  flex-shrink: 0;
+}
+.completed-row > .duplicate-item {
+  margin-left: auto;
+}
 .reorder-buttons .icon-button {
   min-width: 30px;
   min-height: 38px;
@@ -2896,16 +2913,15 @@ button {
   .reorder-buttons {
     flex-direction: column;
   }
-  .reorder-buttons .icon-button {
-    min-width: 26px;
-    min-height: 27px;
-    padding: 3px;
+  .item-secondary-actions {
+    flex-direction: column;
   }
-  .project-item > .subtle-delete {
-    min-width: 27px;
-    padding: 4px;
+  .item-actions .icon-button {
+    min-width: 40px;
+    min-height: 40px;
+    padding: 6px;
   }
-  .project-item > .subtle-delete svg {
+  .project-item .subtle-delete svg {
     width: 14px;
   }
   .wins-banner {
@@ -3074,6 +3090,10 @@ button {
   .queue-row .icon-button {
     min-width: 24px;
     padding: 2px;
+  }
+  .queue-row .duplicate-item {
+    min-width: 40px;
+    min-height: 40px;
   }
   .queue-row .now-badge {
     display: none;

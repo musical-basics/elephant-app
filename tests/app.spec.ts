@@ -3,6 +3,116 @@ import { readFile } from "node:fs/promises";
 
 test.use({ viewport: { width: 390, height: 844 } });
 
+for (const design of ["still", "ember", "orbit", "tide", "pop"]) {
+  test(`${design}: duplicate project items on a narrow phone and edit copies independently`, async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 320, height: 844 });
+    await page.goto(`/#/${design}/project/demo-dinner`);
+    const title = "Write a few ideas for Sunday dinner";
+    const source = page.locator('[data-item-id="dinner-1"]');
+    await source
+      .getByRole("button", { name: `Duplicate ${title}`, exact: true })
+      .click();
+    const rows = page.locator(".project-item");
+    await expect(rows).toHaveCount(6);
+    await expect(rows.nth(0)).toHaveAttribute("data-item-id", "dinner-1");
+    await expect(rows.nth(1).locator(".item-title")).toHaveText(title);
+    await expect(rows.nth(2).locator(".item-title")).toHaveText(
+      "Choose one simple recipe",
+    );
+    expect(await rows.nth(1).getAttribute("data-item-id")).not.toBe("dinner-1");
+    await rows.nth(1).getByRole("button", { name: title, exact: true }).click();
+    await page.getByLabel("Item name").fill("Plan next Sunday's menu");
+    await page.getByRole("button", { name: "Save changes" }).click();
+    await page.reload();
+    await expect(source.locator(".item-title")).toHaveText(title);
+    await expect(rows.nth(1).locator(".item-title")).toHaveText(
+      "Plan next Sunday's menu",
+    );
+    const copyButton = source.getByRole("button", {
+      name: `Duplicate ${title}`,
+      exact: true,
+    });
+    const bounds = await copyButton.boundingBox();
+    expect(bounds!.width).toBeGreaterThanOrEqual(40);
+    expect(bounds!.height).toBeGreaterThanOrEqual(40);
+    expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(320);
+    expect(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth <= window.innerWidth,
+      ),
+    ).toBe(true);
+  });
+}
+
+test("duplicate an errand from the master list and keep both copies after reload", async ({
+  page,
+}) => {
+  await page.goto("/#/still/queue");
+  const title = "Water the plants";
+  const errands = page
+    .locator(".queue-row")
+    .filter({ has: page.getByText(title, { exact: true }) });
+  await expect(errands).toHaveCount(1);
+  await errands
+    .getByRole("button", { name: `Duplicate ${title}`, exact: true })
+    .click();
+  await expect(errands).toHaveCount(2);
+  const titles = await page.locator(".queue-row strong").allTextContents();
+  expect(titles.lastIndexOf(title)).toBeGreaterThan(titles.indexOf(title));
+  await errands
+    .last()
+    .getByRole("button", { name: `Edit ${title}`, exact: true })
+    .click();
+  await page.getByLabel("Item name").fill("Water the balcony plants");
+  await page.getByRole("button", { name: "Save changes" }).click();
+  await page.reload();
+  await expect(errands).toHaveCount(1);
+  await expect(
+    page.getByText("Water the balcony plants", { exact: true }),
+  ).toBeVisible();
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= window.innerWidth,
+    ),
+  ).toBe(true);
+});
+
+test("duplicate the focused item and completed items without changing their originals", async ({
+  page,
+}) => {
+  const title = "Write a few ideas for Sunday dinner";
+  await page.goto("/#/tide/focus");
+  await page
+    .getByRole("button", { name: `Duplicate ${title}`, exact: true })
+    .click();
+  await expect(
+    page.getByRole("heading", { name: title, exact: true }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: /Completed!/ }).click();
+  await page.goto("/#/tide/completed");
+  await page
+    .getByRole("button", { name: `Duplicate ${title}`, exact: true })
+    .click();
+  await expect(page.locator(".completed-row")).toHaveCount(1);
+  await expect(page.locator(".completed-row strong")).toHaveText(title);
+  await page.goto("/#/tide/project/demo-dinner");
+  await expect(
+    page.locator(".project-item .item-title").filter({ hasText: title }),
+  ).toHaveCount(2);
+  await page.locator(".finished-details summary").click();
+  await page
+    .locator(".finished-step")
+    .getByRole("button", { name: `Duplicate ${title}`, exact: true })
+    .click();
+  await expect(page.locator(".finished-step")).toHaveCount(1);
+  await page.reload();
+  await expect(
+    page.locator(".project-item .item-title").filter({ hasText: title }),
+  ).toHaveCount(3);
+});
+
 test("five design options open the corresponding working app", async ({
   page,
 }) => {
@@ -228,13 +338,11 @@ test("a downloaded JSON backup restores a corrupted browser workspace", async ({
   await expect(
     page.getByRole("button", { name: /Download JSON backup/ }),
   ).toBeDisabled();
-  await page
-    .getByLabel("Import an Elephant backup")
-    .setInputFiles({
-      name: "broken.json",
-      mimeType: "application/json",
-      buffer: Buffer.from('{"version":999}'),
-    });
+  await page.getByLabel("Import an Elephant backup").setInputFiles({
+    name: "broken.json",
+    mimeType: "application/json",
+    buffer: Buffer.from('{"version":999}'),
+  });
   await expect(
     page.getByRole("status").filter({ hasText: "Could not import:" }),
   ).toBeVisible();
