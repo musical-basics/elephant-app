@@ -163,6 +163,17 @@ export function updateProject(state: AppState, projectId: string, patch: Partial
   return { ...next, queue };
 }
 
+/** Remove a project and its full history without changing other queue entries. */
+export function deleteProject(state: AppState, projectId: string): AppState {
+  if (!state.projects.some((project) => project.id === projectId)) return state;
+  return {
+    ...state,
+    projects: state.projects.filter((project) => project.id !== projectId),
+    items: state.items.filter((item) => item.projectId !== projectId),
+    queue: state.queue.filter((slot) => slot.kind !== 'project' || slot.projectId !== projectId),
+  };
+}
+
 export function renameItem(state: AppState, itemId: string, value: string): AppState {
   const text = title(value);
   if (!state.items.some((item) => item.id === itemId)) return state;

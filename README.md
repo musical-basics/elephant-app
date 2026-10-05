@@ -20,6 +20,7 @@ A mobile-first productivity app that shows one item at a time. Five complete vis
 - Project placeholders preserve each project's reserved queue positions when its steps are inserted, reordered, split, or deleted.
 - Long-press a handle to reorder, use the accessible up/down controls, or swipe left to remove an item with confirmation.
 - Select a step to insert immediately after it. New steps otherwise append to their project.
+- Delete a project from its card or detail page, with confirmation before removing the project, its items, and its completed history.
 - Completed item/project history, search, profile name/photo, and an optional master list hidden by default.
 - JSON export/import with validation and replacement confirmation, list-specific CSV exports, and confirmed reset.
 - Browser persistence plus Supabase email-link sign-in and a private workspace for each account, with revision checks that prevent silent cross-device overwrites.

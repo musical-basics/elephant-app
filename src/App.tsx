@@ -51,6 +51,7 @@ import {
   completeCurrent,
   createEmptyState,
   deleteItem,
+  deleteProject,
   exportCsv,
   moveItem,
   renameItem,
@@ -60,7 +61,7 @@ import {
   updateProject,
   validateImport,
 } from "./lib/model";
-import type { AppState, Item } from "./lib/model";
+import type { AppState, Item, Project } from "./lib/model";
 import { useWorkspace } from "./lib/useWorkspace";
 
 type Screen =
@@ -78,6 +79,7 @@ type Modal =
   | { kind: "bite" }
   | { kind: "rename"; item: Item }
   | { kind: "delete"; item: Item }
+  | { kind: "deleteProject"; project: Project }
   | { kind: "reset" }
   | { kind: "import"; data: AppState };
 
@@ -831,41 +833,56 @@ export default function App() {
                         );
                         const done = items.filter((i) => i.completedAt).length;
                         return (
-                          <button
+                          <article
                             className="project-card"
                             key={p.id}
-                            onClick={() => navigate("project", p.id)}
+                            aria-label={p.name}
                           >
-                            <div className="project-card-top">
-                              <span
-                                className={`project-glyph glyph-${index % 4}`}
-                              >
-                                <Folder size={22} />
-                              </span>
-                              <ArrowUpRight size={20} />
-                            </div>
-                            <h2>{p.name}</h2>
-                            <p>
-                              {items.length
-                                ? `${done} of ${items.length} little steps completed`
-                                : "A fresh space for your next idea"}
-                            </p>
-                            <div className="progress-track">
-                              <span
-                                style={{
-                                  width: `${items.length ? (done / items.length) * 100 : 0}%`,
-                                }}
-                              />
-                            </div>
-                            <div className="project-meta">
-                              <span>
-                                {p.dueDate
-                                  ? `Due ${formatDate(p.dueDate + "T12:00:00")}`
-                                  : "At your own pace"}
-                              </span>
-                              <span>{items.length - done} left</span>
-                            </div>
-                          </button>
+                            <button
+                              className="project-card-open"
+                              aria-label={`Open project ${p.name}`}
+                              onClick={() => navigate("project", p.id)}
+                            >
+                              <div className="project-card-top">
+                                <span
+                                  className={`project-glyph glyph-${index % 4}`}
+                                >
+                                  <Folder size={22} />
+                                </span>
+                              </div>
+                              <h2>{p.name}</h2>
+                              <p>
+                                {items.length
+                                  ? `${done} of ${items.length} little steps completed`
+                                  : "A fresh space for your next idea"}
+                              </p>
+                              <div className="progress-track">
+                                <span
+                                  style={{
+                                    width: `${items.length ? (done / items.length) * 100 : 0}%`,
+                                  }}
+                                />
+                              </div>
+                              <div className="project-meta">
+                                <span>
+                                  {p.dueDate
+                                    ? `Due ${formatDate(p.dueDate + "T12:00:00")}`
+                                    : "At your own pace"}
+                                </span>
+                                <span>{items.length - done} left</span>
+                              </div>
+                            </button>
+                            <button
+                              className="icon-button project-card-delete"
+                              aria-label={`Delete project ${p.name}`}
+                              title="Delete project"
+                              onClick={() =>
+                                setModal({ kind: "deleteProject", project: p })
+                              }
+                            >
+                              <Trash2 size={18} />
+                            </button>
+                          </article>
                         );
                       })}
                   </div>
@@ -899,21 +916,32 @@ export default function App() {
               {screen === "project" &&
                 (project ? (
                   <>
-                    <button
-                      className="text-button page-back"
-                      onClick={() =>
-                        navigate(
-                          project.status === "completed"
-                            ? "completed"
-                            : "projects",
-                        )
-                      }
-                    >
-                      <ArrowLeft size={17} />
-                      {project.status === "completed"
-                        ? "Completed projects"
-                        : "Your projects"}
-                    </button>
+                    <div className="project-page-actions">
+                      <button
+                        className="text-button page-back"
+                        onClick={() =>
+                          navigate(
+                            project.status === "completed"
+                              ? "completed"
+                              : "projects",
+                          )
+                        }
+                      >
+                        <ArrowLeft size={17} />
+                        {project.status === "completed"
+                          ? "Completed projects"
+                          : "Your projects"}
+                      </button>
+                      <button
+                        className="danger-text project-delete-action"
+                        onClick={() =>
+                          setModal({ kind: "deleteProject", project })
+                        }
+                      >
+                        <Trash2 size={16} />
+                        Delete project
+                      </button>
+                    </div>
                     <div className="project-detail-heading">
                       <span className="project-glyph">
                         <Folder size={25} />
@@ -1712,9 +1740,11 @@ export default function App() {
                     ? "Edit your item"
                     : modal.kind === "delete"
                       ? "Remove this item?"
-                      : modal.kind === "import"
-                        ? "Restore this workspace?"
-                        : "Ready for a fresh start?"
+                      : modal.kind === "deleteProject"
+                        ? "Delete this project?"
+                        : modal.kind === "import"
+                          ? "Restore this workspace?"
+                          : "Ready for a fresh start?"
           }
           description={
             modal.kind === "bite"
@@ -1729,7 +1759,9 @@ export default function App() {
                       ? "This deletes all items, projects, and history in this workspace. Export a backup first if you want to keep them."
                       : modal.kind === "delete"
                         ? "This item will be removed from the project and queue. This can’t be undone."
-                        : undefined
+                        : modal.kind === "deleteProject"
+                          ? "This permanently deletes the project and all its items, including completed history. This can’t be undone."
+                          : undefined
           }
           onClose={() => setModal(null)}
         >
@@ -1870,6 +1902,52 @@ export default function App() {
                 </button>
               </div>
             </form>
+          )}
+          {modal.kind === "deleteProject" && (
+            <>
+              <p className="confirm-item">{modal.project.name}</p>
+              {formError && (
+                <p className="form-error" role="alert">
+                  {formError}
+                </p>
+              )}
+              <div className="sheet-actions">
+                <button
+                  className="secondary-button"
+                  onClick={() => setModal(null)}
+                >
+                  Keep project
+                </button>
+                <button
+                  className="danger-button"
+                  onClick={() => {
+                    try {
+                      update((s) => deleteProject(s, modal.project.id));
+                      setModal(null);
+                      setToast("Project and its items deleted.");
+                      if (screen === "project") {
+                        if (modal.project.status === "completed") {
+                          setCompletedTab("projects");
+                          navigate("completed");
+                        } else {
+                          setProjectTab(modal.project.status);
+                          navigate("projects");
+                        }
+                      }
+                    } catch (error) {
+                      setFormError(
+                        error instanceof Error
+                          ? error.message
+                          : "Could not delete this project. Please try again.",
+                      );
+                    }
+                  }}
+                >
+                  <Trash2 size={17} />
+                  Delete project
+                </button>
+              </div>
+            </>
           )}
           {modal.kind === "delete" && (
             <>

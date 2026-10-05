@@ -82,7 +82,12 @@ test("taking a bite preserves the current item until explicitly completed and pe
     .getByRole("navigation", { name: "Mobile navigation" })
     .getByRole("button", { name: "Projects", exact: true })
     .click();
-  await page.getByRole("button", { name: /Plan a Sunday dinner/ }).click();
+  await page
+    .getByRole("button", {
+      name: "Open project Plan a Sunday dinner",
+      exact: true,
+    })
+    .click();
   await expect(page.locator(".item-title").first()).toHaveText(
     "Write three menu ideas",
   );
@@ -262,13 +267,11 @@ test("profile photo upload survives reload and can be removed", async ({
     ctx.fillRect(0, 0, 2, 2);
     return canvas.toDataURL("image/png").split(",")[1];
   });
-  await page
-    .getByLabel("Upload a profile photo")
-    .setInputFiles({
-      name: "profile.png",
-      mimeType: "image/png",
-      buffer: Buffer.from(png, "base64"),
-    });
+  await page.getByLabel("Upload a profile photo").setInputFiles({
+    name: "profile.png",
+    mimeType: "image/png",
+    buffer: Buffer.from(png, "base64"),
+  });
   await expect(
     page.getByRole("button", { name: "Remove photo" }),
   ).toBeVisible();
@@ -276,4 +279,144 @@ test("profile photo upload survives reload and can be removed", async ({
   await expect(page.locator(".profile-form img")).toBeVisible();
   await page.getByRole("button", { name: "Remove photo" }).click();
   await expect(page.locator(".profile-form img")).toHaveCount(0);
+});
+
+for (const design of ["still", "ember", "orbit", "tide", "pop"]) {
+  test(`${design}: delete active and upcoming projects from their cards`, async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 320, height: 740 });
+    await page.goto(`/#/${design}/projects`);
+    const openDinner = page.getByRole("button", {
+      name: "Open project Plan a Sunday dinner",
+      exact: true,
+    });
+    const deleteDinner = page.getByRole("button", {
+      name: "Delete project Plan a Sunday dinner",
+      exact: true,
+    });
+    await deleteDinner.click();
+    await expect(page).toHaveURL(new RegExp(`/${design}/projects$`));
+    const dialog = page.getByRole("dialog");
+    await expect(
+      dialog.getByText("Plan a Sunday dinner", { exact: true }),
+    ).toBeVisible();
+    await expect(dialog).toContainText("including completed history");
+    await dialog
+      .getByRole("button", { name: "Keep project", exact: true })
+      .click();
+    await expect(openDinner).toBeVisible();
+    await deleteDinner.click();
+    await dialog
+      .getByRole("button", { name: "Delete project", exact: true })
+      .click();
+    await expect(openDinner).toHaveCount(0);
+    await expect(
+      page.getByRole("button", {
+        name: "Open project Make room for creativity",
+        exact: true,
+      }),
+    ).toBeVisible();
+    await page.reload();
+    await expect(
+      page.getByRole("button", {
+        name: "Open project Make room for creativity",
+        exact: true,
+      }),
+    ).toBeVisible();
+    await expect(openDinner).toHaveCount(0);
+    await page.getByRole("tab", { name: /Upcoming/ }).click();
+    await page
+      .getByRole("button", {
+        name: "Delete project A little more movement",
+        exact: true,
+      })
+      .click();
+    await dialog
+      .getByRole("button", { name: "Delete project", exact: true })
+      .click();
+    await expect(
+      page.getByRole("heading", { name: "Something for later.", exact: true }),
+    ).toBeVisible();
+    expect(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth <= window.innerWidth,
+      ),
+    ).toBe(true);
+  });
+}
+
+test("delete from project details removes its completion history and queue entries", async ({
+  page,
+}) => {
+  await page.goto("/#/still/focus");
+  await page.getByRole("button", { name: /Completed!/ }).click();
+  await page.goto("/#/still/project/demo-dinner");
+  const deleteButton = page.getByRole("button", {
+    name: "Delete project",
+    exact: true,
+  });
+  await deleteButton.click();
+  await page
+    .getByRole("dialog")
+    .getByRole("button", { name: "Keep project" })
+    .click();
+  await expect(page.getByLabel("Project name", { exact: true })).toHaveValue(
+    "Plan a Sunday dinner",
+  );
+  await deleteButton.click();
+  await page
+    .getByRole("dialog")
+    .getByRole("button", { name: "Delete project", exact: true })
+    .click();
+  await expect(page).toHaveURL(/\/still\/projects$/);
+  await expect(
+    page.getByRole("button", {
+      name: "Open project Plan a Sunday dinner",
+      exact: true,
+    }),
+  ).toHaveCount(0);
+  await page.goto("/#/still/completed");
+  await expect(
+    page.getByText("Your little wins will live here.", { exact: true }),
+  ).toBeVisible();
+  await page.goto("/#/still/queue");
+  await expect(
+    page.getByRole("heading", { name: "Master list", exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.locator(".queue-row").filter({ hasText: "Plan a Sunday dinner" }),
+  ).toHaveCount(0);
+  await expect(
+    page.locator(".queue-row").filter({ hasText: "Make room for creativity" }),
+  ).not.toHaveCount(0);
+  await page.goto("/#/still/focus");
+  await expect(
+    page.getByRole("heading", { name: "Water the plants", exact: true }),
+  ).toBeVisible();
+  await page.reload();
+  await expect(
+    page.getByRole("heading", { name: "Water the plants", exact: true }),
+  ).toBeVisible();
+});
+
+test("deleting an upcoming project from details returns to the upcoming list", async ({
+  page,
+}) => {
+  await page.goto("/#/ember/project/demo-movement");
+  await page
+    .getByRole("button", { name: "Delete project", exact: true })
+    .click();
+  await page
+    .getByRole("dialog")
+    .getByRole("button", { name: "Delete project", exact: true })
+    .click();
+  await expect(page).toHaveURL(/\/ember\/projects$/);
+  await expect(page.getByRole("tab", { name: /Upcoming/ })).toHaveAttribute(
+    "aria-selected",
+    "true",
+  );
+  await expect(
+    page.getByRole("heading", { name: "Something for later.", exact: true }),
+  ).toBeVisible();
 });

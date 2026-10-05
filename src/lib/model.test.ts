@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   addItem, addProject, completeCurrent, createDemoState, createEmptyState,
-  deleteItem, exportCsv, moveItem, renameItem, reorderItem, reprocess,
+  deleteItem, deleteProject, exportCsv, moveItem, renameItem, reorderItem, reprocess,
   resolveQueue, takeBite, updateProject, validateImport, MAX_INLINE_AVATAR_BYTES,
   type AppState, type Item, type Project, type QueueSlot,
 } from './model';
@@ -157,6 +157,65 @@ describe('completion and project lifecycle', () => {
     expect(next.queue).toHaveLength(0);
     expect(next.projects[0]).toMatchObject({ status: 'active', completedAt: null });
     expect(validateImport(next)).toEqual(next);
+  });
+});
+
+describe('deleting projects', () => {
+  it('removes every project step and slot while preserving other history and queue order', () => {
+    const state = sample();
+    state.projects.push(project('q'));
+    state.items.push(
+      { ...item('p-done', 'p'), completedAt: timestamp },
+      item('q1', 'q'),
+      item('q2', 'q'),
+      { ...item('q-done', 'q'), completedAt: timestamp },
+      { ...item('errand-done', null), completedAt: timestamp },
+    );
+    state.queue.splice(1, 0, slot('q-slot', 'q'));
+    const original = structuredClone(state);
+    const next = deleteProject(state, 'p');
+
+    expect(next.projects).toEqual([state.projects[1]]);
+    expect(next.items.map((entry) => entry.id)).toEqual(['e1', 'e2', 'e3', 'e4', 'q1', 'q2', 'q-done', 'errand-done']);
+    expect(next.queue.map((entry) => entry.id)).toEqual(['q-slot', 'slot-e1', 'slot-e2', 'slot-e3', 'slot-e4']);
+    expect(resolveQueue(next).map((entry) => entry.item.id)).toEqual(['q1', 'e1', 'e2', 'e3', 'e4']);
+    // Project q qualifies for insertion after removal, but deletion must not
+    // trigger that pass or append q2 to its preserved queue.
+    expect(reprocess(next).queue).toHaveLength(next.queue.length + 1);
+    expect(next.queue).toHaveLength(5);
+    expect(next.profile).toBe(state.profile);
+    expect(next.settings).toBe(state.settings);
+    expect(next.projects[0]).toBe(state.projects[1]);
+    expect(next.queue[0]).toBe(state.queue[1]);
+    expect(state).toEqual(original);
+    expect(validateImport(JSON.parse(JSON.stringify(next)))).toEqual(next);
+  });
+
+  it.each(['inactive', 'completed'] as const)('deletes an %s project and its items without touching the active queue', (status) => {
+    const state = sample();
+    state.projects.push(project('removed', status));
+    state.items.push({ ...item('removed-1', 'removed'), completedAt: status === 'completed' ? timestamp : null });
+    state.items.push({ ...item('removed-done', 'removed'), completedAt: timestamp });
+    const original = structuredClone(state);
+    const next = deleteProject(state, 'removed');
+    expect(next.projects).toEqual([state.projects[0]]);
+    expect(next.items).toEqual(sample().items);
+    expect(next.queue).toEqual(state.queue);
+    expect(state).toEqual(original);
+    expect(validateImport(JSON.parse(JSON.stringify(next)))).toEqual(next);
+  });
+
+  it('deletes an empty project and leaves an importable empty workspace', () => {
+    const state: AppState = { ...createEmptyState(), projects: [project('empty')] };
+    const next = deleteProject(state, 'empty');
+    expect(next).toEqual(createEmptyState());
+    expect(state.projects).toEqual([project('empty')]);
+    expect(validateImport(JSON.parse(JSON.stringify(next)))).toEqual(next);
+  });
+
+  it('returns the original state when the project does not exist', () => {
+    const state = sample();
+    expect(deleteProject(state, 'missing')).toBe(state);
   });
 });
 
