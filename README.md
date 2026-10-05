@@ -18,7 +18,7 @@ A mobile-first productivity app that shows one item at a time. Five complete vis
 - Completing an item plays a short chime and a brief confetti celebration. The next task stays usable immediately; reduced-motion preferences show a still celebration instead.
 - Use **Edit** on Do now to change the current item's name without moving it in the queue or interrupting its timer.
 - Use **View project** beside the current item's project name to open its details, then **Back to Do now** to return to the current item.
-- **Projects** opens a simple menu with **Add project**, **View projects**, and **View completed projects**. The project lists stay one tap away.
+- **Projects** opens a simple menu with **Add project**, **View projects**, and **View completed projects**. Search here to find active, upcoming, or completed projects by name and open one directly; matching projects appear only while searching.
 - Optional countdown on Do now: **Add timer**, adjust minutes/seconds, then start, pause, resume, or reset. Task durations such as “5 minutes cleaning” supply the default; other tasks start at five minutes. The timer stays with the current item through navigation/reloads in this browser tab and resets when the current item changes. Reaching zero leaves the item open.
 - Finishing the last item keeps its project active so you can add more. Use **Mark project complete** on the project page to explicitly finish it; confirmation also completes any remaining items. **Reopen project** makes it active again.
 - Take a Bite: rename the current step and create its remainder. The first step stays open until explicitly completed.

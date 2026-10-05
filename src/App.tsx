@@ -44,6 +44,7 @@ import {
 } from "lucide-react";
 import DesignGallery from "./components/DesignGallery";
 import CompletionCelebration from "./components/CompletionCelebration";
+import ProjectSearch from "./components/ProjectSearch";
 import FocusTimer from "./components/FocusTimer";
 import { Botanical, Elephant } from "./components/Elephant";
 import Sheet from "./components/Sheet";
@@ -862,6 +863,10 @@ export default function App() {
                   <header className="page-heading">
                     <h1>Projects</h1>
                   </header>
+                  <ProjectSearch
+                    projects={state.projects}
+                    onOpen={(id) => navigate("project", id)}
+                  />
                   <div className="projects-menu">
                     <button
                       type="button"
