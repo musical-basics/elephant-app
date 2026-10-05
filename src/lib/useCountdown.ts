@@ -1,11 +1,15 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
-  createCountdown, pauseCountdown, remainingMilliseconds, resumeCountdown,
-  settleCountdown, validateCountdown,
-} from './countdown';
-import type { CountdownState, CountdownStatus } from './countdown';
+  createCountdown,
+  elapsedSeconds,
+  pauseCountdown,
+  remainingMilliseconds,
+  resumeCountdown,
+  validateCountdown,
+} from "./countdown";
+import type { CountdownState, CountdownStatus } from "./countdown";
 
-export const COUNTDOWN_STORAGE_KEY = 'elephant.countdown.v1';
+export const COUNTDOWN_STORAGE_KEY = "elephant.countdown.v1";
 
 function readStoredTimer(): CountdownState | null {
   try {
@@ -18,20 +22,33 @@ function readStoredTimer(): CountdownState | null {
 
 function persistTimer(timer: CountdownState | null): void {
   try {
-    if (timer) sessionStorage.setItem(COUNTDOWN_STORAGE_KEY, JSON.stringify(timer));
+    if (timer)
+      sessionStorage.setItem(COUNTDOWN_STORAGE_KEY, JSON.stringify(timer));
     else sessionStorage.removeItem(COUNTDOWN_STORAGE_KEY);
   } catch {
     // The timer continues in memory when this tab cannot use session storage.
   }
 }
 
-export function useCountdown({ itemId, scope, ready }: { itemId: string | null; scope: string; ready: boolean }): {
+export function useCountdown({
+  itemId,
+  scope,
+  ready,
+}: {
+  itemId: string | null;
+  scope: string;
+  ready: boolean;
+}): {
   timer: null | { durationSeconds: number; status: CountdownStatus };
   remainingSeconds: number;
   open: (seconds: number) => void;
   start: (seconds: number) => void;
   pause: () => void;
   resume: () => void;
+  pauseForCompletion: () => {
+    elapsedSeconds: number;
+    wasRunning: boolean;
+  } | null;
   reset: () => void;
   remove: () => void;
 } {
@@ -55,56 +72,76 @@ export function useCountdown({ itemId, scope, ready }: { itemId: string | null; 
       commit(null);
       return;
     }
-    const at = Date.now();
-    const next = settleCountdown(saved, at);
-    if (next !== saved) commit(next, at);
-    else setNow(at);
+    setNow(Date.now());
   }, [ready, itemId, scope, commit]);
 
   useEffect(() => {
-    if (!ready || !itemId || stored?.status !== 'running'
-      || stored.itemId !== itemId || stored.scope !== scope) return;
+    if (
+      !ready ||
+      !itemId ||
+      stored?.status !== "running" ||
+      stored.itemId !== itemId ||
+      stored.scope !== scope
+    )
+      return;
     const refresh = () => {
       const saved = current.current;
       if (!saved || saved.itemId !== itemId || saved.scope !== scope) return;
-      const at = Date.now();
-      const next = settleCountdown(saved, at);
-      if (next !== saved) commit(next, at);
-      else setNow(at);
+      setNow(Date.now());
     };
     refresh();
     const interval = window.setInterval(refresh, 250);
-    document.addEventListener('visibilitychange', refresh);
-    window.addEventListener('focus', refresh);
+    document.addEventListener("visibilitychange", refresh);
+    window.addEventListener("focus", refresh);
     return () => {
       window.clearInterval(interval);
-      document.removeEventListener('visibilitychange', refresh);
-      window.removeEventListener('focus', refresh);
+      document.removeEventListener("visibilitychange", refresh);
+      window.removeEventListener("focus", refresh);
     };
   }, [ready, itemId, scope, stored?.status, commit]);
 
   const matchingTimer = useCallback(() => {
     const saved = current.current;
-    return ready && itemId && saved?.itemId === itemId && saved.scope === scope ? saved : null;
+    return ready && itemId && saved?.itemId === itemId && saved.scope === scope
+      ? saved
+      : null;
   }, [ready, itemId, scope]);
 
-  const open = useCallback((seconds: number) => {
-    if (!ready || !itemId) return;
-    const at = Date.now();
-    commit(createCountdown(itemId, scope, seconds, false, at), at);
-  }, [ready, itemId, scope, commit]);
+  const open = useCallback(
+    (seconds: number) => {
+      if (!ready || !itemId) return;
+      const at = Date.now();
+      commit(createCountdown(itemId, scope, seconds, false, at), at);
+    },
+    [ready, itemId, scope, commit],
+  );
 
-  const start = useCallback((seconds: number) => {
-    if (!ready || !itemId) return;
-    const at = Date.now();
-    commit(createCountdown(itemId, scope, seconds, true, at), at);
-  }, [ready, itemId, scope, commit]);
+  const start = useCallback(
+    (seconds: number) => {
+      if (!ready || !itemId) return;
+      const at = Date.now();
+      commit(createCountdown(itemId, scope, seconds, true, at), at);
+    },
+    [ready, itemId, scope, commit],
+  );
 
   const pause = useCallback(() => {
     const saved = matchingTimer();
     if (!saved) return;
     const at = Date.now();
     commit(pauseCountdown(saved, at), at);
+  }, [matchingTimer, commit]);
+
+  const pauseForCompletion = useCallback(() => {
+    const saved = matchingTimer();
+    if (!saved || saved.status === "ready") return null;
+    const at = Date.now();
+    const paused = pauseCountdown(saved, at);
+    commit(paused, at);
+    return {
+      elapsedSeconds: elapsedSeconds(paused, at),
+      wasRunning: saved.status === "running",
+    };
   }, [matchingTimer, commit]);
 
   const resume = useCallback(() => {
@@ -118,18 +155,39 @@ export function useCountdown({ itemId, scope, ready }: { itemId: string | null; 
     const saved = matchingTimer();
     if (!saved) return;
     const at = Date.now();
-    commit(createCountdown(saved.itemId, saved.scope, saved.durationSeconds, false, at), at);
+    commit(
+      createCountdown(
+        saved.itemId,
+        saved.scope,
+        saved.durationSeconds,
+        false,
+        at,
+      ),
+      at,
+    );
   }, [matchingTimer, commit]);
 
   const remove = useCallback(() => {
     if (matchingTimer()) commit(null);
   }, [matchingTimer, commit]);
 
-  const visible = ready && itemId && stored?.itemId === itemId && stored.scope === scope
-    ? settleCountdown(stored, now) : null;
+  const visible =
+    ready && itemId && stored?.itemId === itemId && stored.scope === scope
+      ? stored
+      : null;
   return {
-    timer: visible ? { durationSeconds: visible.durationSeconds, status: visible.status } : null,
-    remainingSeconds: visible ? Math.ceil(remainingMilliseconds(visible, now) / 1000) : 0,
-    open, start, pause, resume, reset, remove,
+    timer: visible
+      ? { durationSeconds: visible.durationSeconds, status: visible.status }
+      : null,
+    remainingSeconds: visible
+      ? Math.ceil(remainingMilliseconds(visible, now) / 1000)
+      : 0,
+    open,
+    start,
+    pause,
+    resume,
+    pauseForCompletion,
+    reset,
+    remove,
   };
 }

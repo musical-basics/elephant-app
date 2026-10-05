@@ -69,10 +69,10 @@ export default function FocusTimer({ title, countdown }: Props) {
     );
   }
 
-  const finished = timer.status === "finished";
+  const overtime = timer.status !== "ready" && remainingSeconds <= 0;
   return (
     <section
-      className={`focus-timer${finished ? " timer-finished" : ""}`}
+      className={`focus-timer${overtime ? " timer-overtime" : ""}`}
       aria-label="Task countdown"
     >
       <div className="timer-heading">
@@ -139,14 +139,20 @@ export default function FocusTimer({ title, countdown }: Props) {
       ) : (
         <>
           <div className="timer-readout">
-            <span role="timer" aria-label="Time remaining" aria-live="off">
+            <span
+              role="timer"
+              aria-label={overtime ? "Time over" : "Time remaining"}
+              aria-live="off"
+            >
               {formatCountdown(remainingSeconds)}
             </span>
             <span className="timer-state">
-              {finished
-                ? "Time’s up"
-                : timer.status === "paused"
-                  ? "Paused"
+              {timer.status === "paused"
+                ? overtime
+                  ? "Overtime · Paused"
+                  : "Paused"
+                : overtime
+                  ? "Overtime"
                   : "Counting down"}
             </span>
           </div>
@@ -171,10 +177,10 @@ export default function FocusTimer({ title, countdown }: Props) {
               <button
                 type="button"
                 className="primary-button"
-                aria-label={finished ? "Restart timer" : "Resume timer"}
-                onClick={finished ? () => start(duration) : resume}
+                aria-label="Resume timer"
+                onClick={resume}
               >
-                <Play size={16} /> {finished ? "Start again" : "Resume"}
+                <Play size={16} /> Resume
               </button>
             )}
             <button
@@ -189,9 +195,7 @@ export default function FocusTimer({ title, countdown }: Props) {
         </>
       )}
       <p className="timer-completion" role="status">
-        {finished
-          ? "Time’s up. Your item stays open until you mark it completed."
-          : ""}
+        {overtime ? "Time’s up. The timer keeps track of your extra time." : ""}
       </p>
     </section>
   );

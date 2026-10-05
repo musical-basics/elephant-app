@@ -130,7 +130,7 @@
 .timer-completion:not(:empty) {
   margin-top: 12px !important;
 }
-.focus-timer.timer-finished {
+.focus-timer.timer-overtime {
   border-color: var(--accent);
 }
 @media (max-width: 650px) {

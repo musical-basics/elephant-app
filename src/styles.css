@@ -1469,6 +1469,50 @@ button {
   flex-shrink: 0;
   gap: 8px;
 }
+.completed-task-time {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 8px;
+  color: var(--accent);
+  font-size: 11px;
+}
+.finished-task-time {
+  display: block;
+  margin-top: 5px;
+  color: var(--accent);
+}
+.completion-time-summary {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+  padding: 18px;
+  margin: 18px 0 12px;
+  border-radius: 12px;
+  background: var(--soft);
+  color: var(--accent);
+}
+.completion-time-summary span {
+  display: block;
+  font-size: 12px;
+  color: var(--muted);
+}
+.completion-time-summary strong {
+  display: block;
+  margin-top: 4px;
+  font-size: 32px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+.timed-completion-actions {
+  display: grid;
+  gap: 10px;
+  margin-top: 24px;
+}
+.timed-completion-actions button {
+  min-height: 48px;
+  justify-content: center;
+}
 .completed-actions .put-back-item {
   min-height: 44px;
   font-size: 12px;
@@ -2781,7 +2825,8 @@ button {
     gap: 6px;
     font-size: 8px;
     color: var(--muted);
-    min-width: 65px;
+    min-width: 0;
+    flex: 1;
     min-height: 50px;
     position: relative;
     border-radius: 10px;

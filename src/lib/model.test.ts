@@ -223,6 +223,88 @@ describe('completion and project lifecycle', () => {
   });
 });
 
+describe('recording task time', () => {
+  it.each([0, 300, 330, Number.MAX_SAFE_INTEGER])('records %s elapsed seconds on only the completed item', (seconds) => {
+    const state = sample();
+    const original = structuredClone(state);
+    const next = completeCurrent(state, seconds);
+    expect(next.items[0]).toMatchObject({ id: 'p1', timeSpentSeconds: seconds });
+    expect(next.items[0].completedAt).toBeTruthy();
+    expect(next.items.slice(1)).toEqual(state.items.slice(1));
+    expect(next.queue.map((entry) => entry.id)).toEqual(['slot-e1', 'slot-e2', 'b', 'slot-e3', 'slot-e4', 'c']);
+    expect(next.projects).toBe(state.projects);
+    expect(state).toEqual(original);
+    expect(validateImport(JSON.parse(JSON.stringify(next)))).toEqual(next);
+  });
+
+  it.each([-1, 0.5, NaN, Infinity, Number.MAX_SAFE_INTEGER + 1, null, '300'])('rejects invalid elapsed seconds %s', (seconds) => {
+    const state = sample();
+    const original = structuredClone(state);
+    expect(() => completeCurrent(state, seconds as number)).toThrow(/Time spent/);
+    expect(state).toEqual(original);
+  });
+
+  it('completes without recording time when it is omitted, clearing any stale value', () => {
+    const state = sample();
+    // Defensively discard a stale value even if a caller supplies an invalid
+    // in-memory active item rather than a validated backup.
+    state.items[0].timeSpentSeconds = 330;
+    const next = completeCurrent(state);
+    expect(next.items[0].completedAt).toBeTruthy();
+    expect(next.items[0]).not.toHaveProperty('timeSpentSeconds');
+    expect(state.items[0].timeSpentSeconds).toBe(330);
+    expect(validateImport(JSON.parse(JSON.stringify(next)))).toEqual(next);
+  });
+
+  it.each([false, true])('clears saved time on put back, including deleted-project history = %s', (deleteParent) => {
+    const completed = completeCurrent(sample(), 330);
+    const history = deleteParent ? deleteProject(completed, 'p') : completed;
+    const restored = putBackItem(history, 'p1');
+    const current = resolveQueue(restored)[0].item;
+    expect(current.id).toBe('p1');
+    expect(current.completedAt).toBeNull();
+    expect(current).not.toHaveProperty('timeSpentSeconds');
+    expect(history.items.find((entry) => entry.id === 'p1')?.timeSpentSeconds).toBe(330);
+    expect(validateImport(JSON.parse(JSON.stringify(restored)))).toEqual(restored);
+    expect(completeCurrent(restored).items.find((entry) => entry.id === 'p1')).not.toHaveProperty('timeSpentSeconds');
+    expect(completeCurrent(restored, 45).items.find((entry) => entry.id === 'p1')?.timeSpentSeconds).toBe(45);
+  });
+
+  it('preserves recorded time when renaming, completing the parent, or deleting the project', () => {
+    const completed = completeCurrent(sample(), 330);
+    const renamed = renameItem(completed, 'p1', 'Finished step');
+    const completedProject = updateProject(renamed, 'p', { status: 'completed' });
+    const deleted = deleteProject(completedProject, 'p');
+    for (const state of [renamed, completedProject, deleted]) {
+      expect(state.items.find((entry) => entry.id === 'p1')).toMatchObject({ title: 'Finished step', timeSpentSeconds: 330 });
+      expect(validateImport(JSON.parse(JSON.stringify(state)))).toEqual(state);
+    }
+    expect(deleted.items[0]).toMatchObject({ projectId: null, deletedProjectName: 'p' });
+    expect(completedProject.items.filter((entry) => entry.id !== 'p1').every((entry) => entry.timeSpentSeconds === undefined)).toBe(true);
+  });
+
+  it.each([false, true])('does not copy recorded time into a duplicate with errand source = %s', (isErrand) => {
+    const source = isErrand ? addItem(createEmptyState(), 'An errand') : sample();
+    const completed = completeCurrent(source, 330);
+    const completedId = source.items[0].id;
+    const duplicated = duplicateItem(completed, completedId);
+    const copy = duplicated.items.find((entry) => !completed.items.some((old) => old.id === entry.id))!;
+    expect(copy.completedAt).toBeNull();
+    expect(copy).not.toHaveProperty('timeSpentSeconds');
+    expect(duplicated.items.find((entry) => entry.id === completedId)?.timeSpentSeconds).toBe(330);
+    expect(validateImport(JSON.parse(JSON.stringify(duplicated)))).toEqual(duplicated);
+  });
+
+  it('keeps new items and bite remainders untimed while retaining completed history', () => {
+    const completed = completeCurrent(sample(), 330);
+    const added = addItem(completed, 'A new step', 'p');
+    const split = takeBite(added, 'First bite', 'Remainder');
+    expect(split.items.find((entry) => entry.id === 'p1')?.timeSpentSeconds).toBe(330);
+    expect(split.items.filter((entry) => !entry.completedAt).every((entry) => !Object.hasOwn(entry, 'timeSpentSeconds'))).toBe(true);
+    expect(validateImport(JSON.parse(JSON.stringify(split)))).toEqual(split);
+  });
+});
+
 describe('putting completed items back', () => {
   it('restores a later project step to the front while keeping all existing queue contents and slots in order', () => {
     const state = sample();
@@ -669,6 +751,59 @@ describe('backup validation and CSV safety', () => {
   it('round trips demo and empty states without changing their content', () => {
     for (const state of [createEmptyState(), createDemoState(), sample()]) {
       expect(validateImport(JSON.parse(JSON.stringify(state)))).toEqual(state);
+    }
+  });
+
+  it('keeps older completed backups untimed and round trips optional task time', () => {
+    const oldState = completeCurrent(sample());
+    const oldRestored = validateImport(JSON.parse(JSON.stringify(oldState)));
+    expect(oldRestored).toEqual(oldState);
+    expect(oldRestored.items.every((entry) => !Object.hasOwn(entry, 'timeSpentSeconds'))).toBe(true);
+    const timed = completeCurrent(completeCurrent(oldState, 0), 330);
+    const restored = validateImport(JSON.parse(JSON.stringify(timed)));
+    expect(restored).toEqual(timed);
+    expect(restored.items.find((entry) => entry.id === 'p1')).not.toHaveProperty('timeSpentSeconds');
+    expect(restored.items.find((entry) => entry.id === 'e1')?.timeSpentSeconds).toBe(0);
+    expect(restored.items.find((entry) => entry.id === 'e2')?.timeSpentSeconds).toBe(330);
+  });
+
+  it('rejects malformed recorded time and recorded time on unfinished items', () => {
+    const state = completeCurrent(sample(), 330);
+    for (const timeSpentSeconds of [-1, 0.5, NaN, Infinity, Number.MAX_SAFE_INTEGER + 1, null, '330', true, []]) {
+      expect(() => validateImport({ ...state, items: state.items.map((entry, index) => index === 0 ? { ...entry, timeSpentSeconds } : entry) })).toThrow(/item time spent/);
+    }
+    for (const timeSpentSeconds of [0, 330]) {
+      const active = sample();
+      active.items[0].timeSpentSeconds = timeSpentSeconds;
+      expect(() => validateImport(active)).toThrow(/only completed items/);
+    }
+  });
+
+  it('exports seconds for timed completions and empty cells for untimed items without changing project CSVs', () => {
+    const state: AppState = {
+      ...createEmptyState(),
+      projects: [project('p')],
+      items: [
+        { ...item('timed', 'p'), completedAt: timestamp, timeSpentSeconds: 330 },
+        { ...item('zero', 'p'), completedAt: timestamp, timeSpentSeconds: 0 },
+        { ...item('untimed', 'p'), completedAt: timestamp },
+        item('pending', 'p'),
+      ],
+      queue: [slot('p-slot', 'p')],
+    };
+    const header = '"Title","Project","Status","Created at","Completed at","Time spent (seconds)"';
+    const completedRows = [
+      `"timed","p","Completed","${timestamp}","${timestamp}","330"`,
+      `"zero","p","Completed","${timestamp}","${timestamp}","0"`,
+      `"untimed","p","Completed","${timestamp}","${timestamp}",""`,
+    ];
+    const pendingRow = `"pending","p","Active","${timestamp}","",""`;
+    expect(exportCsv(state, 'completed')).toBe([header, ...completedRows].join('\r\n'));
+    expect(exportCsv(state, 'items')).toBe([header, ...completedRows, pendingRow].join('\r\n'));
+    expect(exportCsv(state, 'queue')).toBe([header, pendingRow].join('\r\n'));
+    expect(exportCsv(state, 'active')).toBe(`"Name","Status","Created at","Due date","Completed at"\r\n"p","active","${timestamp}","",""`);
+    for (const list of ['inactive', 'completedProjects'] as const) {
+      expect(exportCsv(state, list)).toBe('"Name","Status","Created at","Due date","Completed at"');
     }
   });
 

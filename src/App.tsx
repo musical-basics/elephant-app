@@ -11,6 +11,7 @@ import {
   ArrowRight,
   ArrowUp,
   ArrowUpRight,
+  BarChart3,
   Check,
   CheckCheck,
   ChevronDown,
@@ -38,6 +39,7 @@ import {
   Sparkles,
   Sun,
   Trash2,
+  Timer,
   Upload,
   X,
   Zap,
@@ -45,6 +47,7 @@ import {
 import DesignGallery from "./components/DesignGallery";
 import CompletionCelebration from "./components/CompletionCelebration";
 import ProjectSearch from "./components/ProjectSearch";
+import Analytics from "./components/Analytics";
 import FocusTimer from "./components/FocusTimer";
 import { Botanical, Elephant } from "./components/Elephant";
 import Sheet from "./components/Sheet";
@@ -72,6 +75,7 @@ import type { AppState, Item, Project } from "./lib/model";
 import { useWorkspace } from "./lib/useWorkspace";
 import { useCountdown } from "./lib/useCountdown";
 import { playCompletionSound } from "./lib/completionSound";
+import { formatElapsedTime } from "./lib/duration";
 
 type Screen =
   | "home"
@@ -80,6 +84,7 @@ type Screen =
   | "projects"
   | "project"
   | "completed"
+  | "analytics"
   | "settings"
   | "queue";
 type Route = { design: DesignId | null; screen: Screen; projectId?: string };
@@ -91,6 +96,13 @@ type Modal =
   | { kind: "delete"; item: Item }
   | { kind: "deleteProject"; project: Project }
   | { kind: "completeProject"; project: Project }
+  | {
+      kind: "completeTimedItem";
+      item: Item;
+      scope: string;
+      elapsedSeconds: number;
+      wasRunning: boolean;
+    }
   | { kind: "reset" }
   | { kind: "import"; data: AppState };
 
@@ -116,6 +128,7 @@ function readRoute(): Route {
       "projects",
       "project",
       "completed",
+      "analytics",
       "settings",
       "queue",
     ].includes(screen)
@@ -196,9 +209,10 @@ export default function App() {
   const design = designs.find((d) => d.id === designId) ?? designs[0];
   const queue = resolveQueue(state);
   const current = queue[0];
+  const timerScope = `${workspace.mode}:${workspace.userEmail ?? "local"}`;
   const countdown = useCountdown({
     itemId: current?.item.id ?? null,
-    scope: `${workspace.mode}:${workspace.userEmail ?? "local"}`,
+    scope: timerScope,
     ready: workspace.ready,
   });
   const project = state.projects.find((p) => p.id === projectId);
@@ -213,6 +227,13 @@ export default function App() {
 
   useEffect(() => {
     const handler = () => {
+      if (
+        modal?.kind === "completeTimedItem" &&
+        modal.wasRunning &&
+        current?.item.id === modal.item.id &&
+        timerScope === modal.scope
+      )
+        countdown.resume();
       setRoute(readRoute());
       setSelectedItem(null);
       setModal(null);
@@ -221,7 +242,7 @@ export default function App() {
     };
     window.addEventListener("hashchange", handler);
     return () => window.removeEventListener("hashchange", handler);
-  }, []);
+  }, [modal, countdown.resume, current?.item.id, timerScope]);
   useEffect(() => {
     document.title = designId
       ? `Elephant · ${design.name} · ${screenTitle}`
@@ -280,17 +301,60 @@ export default function App() {
       return false;
     }
   }
-  function finishCurrentItem() {
+  function completeFocusedItem(timeSpentSeconds?: number) {
     if (!current) return;
     if (
-      mutate(completeCurrent, (next) => {
-        const count = countCompletedToday(next.items);
-        return `One small step, done. ${count} ${count === 1 ? "item" : "items"} completed today.`;
-      })
+      mutate(
+        (s) => completeCurrent(s, timeSpentSeconds),
+        (next) => {
+          const count = countCompletedToday(next.items);
+          return `One small step, done. ${count} ${count === 1 ? "item" : "items"} completed today.`;
+        },
+      )
     ) {
+      setModal(null);
       setCompletionCelebration(current.item.id);
       playCompletionSound();
     }
+  }
+  function finishCurrentItem() {
+    if (!current) return;
+    const timing = countdown.pauseForCompletion();
+    if (timing) {
+      setModal({
+        kind: "completeTimedItem",
+        item: current.item,
+        scope: timerScope,
+        ...timing,
+      });
+    } else {
+      completeFocusedItem();
+    }
+  }
+  function closeModal() {
+    if (restoring) return;
+    if (
+      modal?.kind === "completeTimedItem" &&
+      modal.wasRunning &&
+      current?.item.id === modal.item.id &&
+      timerScope === modal.scope
+    )
+      countdown.resume();
+    setModal(null);
+  }
+  function confirmTimedCompletion(saveTime: boolean) {
+    if (modal?.kind !== "completeTimedItem") return;
+    if (
+      !workspace.ready ||
+      current?.item.id !== modal.item.id ||
+      timerScope !== modal.scope
+    ) {
+      setFormError(
+        "Your current task changed. Close this sheet and check Do now before completing it.",
+      );
+      return;
+    }
+    completeFocusedItem(saveTime ? modal.elapsedSeconds : undefined);
   }
   function submit(action: (s: AppState) => AppState, message: string) {
     try {
@@ -366,6 +430,7 @@ export default function App() {
       label: "Completed",
       icon: <CircleCheck size={20} />,
     },
+    { screen: "analytics", label: "Analytics", icon: <BarChart3 size={20} /> },
   ];
   const nav = (mobile = false) => (
     <nav
@@ -1305,7 +1370,15 @@ export default function App() {
                             <div className="finished-step" key={item.id}>
                               <CircleCheck size={17} />
                               <span>{item.title}</span>
-                              <small>{formatDate(item.completedAt!)}</small>
+                              <small>
+                                {formatDate(item.completedAt!)}
+                                {item.timeSpentSeconds !== undefined && (
+                                  <span className="finished-task-time">
+                                    {formatElapsedTime(item.timeSpentSeconds)}{" "}
+                                    spent
+                                  </span>
+                                )}
+                              </small>
                               <DuplicateButton
                                 item={item}
                                 onDuplicate={() => duplicate(item)}
@@ -1425,6 +1498,13 @@ export default function App() {
                                 <time dateTime={item.completedAt!}>
                                   {formatDate(item.completedAt!, true)}
                                 </time>
+                                {item.timeSpentSeconds !== undefined && (
+                                  <span className="completed-task-time">
+                                    <Timer size={13} />
+                                    Time spent:{" "}
+                                    {formatElapsedTime(item.timeSpentSeconds)}
+                                  </span>
+                                )}
                               </div>
                               <span className="completed-actions">
                                 <button
@@ -1513,6 +1593,17 @@ export default function App() {
                       }
                     />
                   )}
+                </>
+              )}
+
+              {screen === "analytics" && (
+                <>
+                  <PageHeading
+                    eyebrow="A LITTLE PROGRESS, EVERY DAY"
+                    title="Analytics"
+                    description="What you finished and what you added, day by day."
+                  />
+                  <Analytics items={state.items} />
                 </>
               )}
 
@@ -1995,57 +2086,100 @@ export default function App() {
       {modal && (
         <Sheet
           title={
-            modal.kind === "item"
-              ? "One little thing."
-              : modal.kind === "project"
-                ? "Make room for an idea."
-                : modal.kind === "bite"
-                  ? "A smaller bite."
-                  : modal.kind === "rename"
-                    ? "Edit your item"
-                    : modal.kind === "delete"
-                      ? modal.item.completedAt
-                        ? "Remove completed item?"
-                        : "Remove this item?"
-                      : modal.kind === "deleteProject"
-                        ? "Delete this project?"
-                        : modal.kind === "completeProject"
-                          ? "Complete this project?"
-                          : modal.kind === "import"
-                            ? "Restore this workspace?"
-                            : "Ready for a fresh start?"
-          }
-          description={
-            modal.kind === "bite"
-              ? "Make the first step a little easier. The rest will be waiting for you."
+            modal.kind === "completeTimedItem"
+              ? "Complete this task?"
               : modal.kind === "item"
-                ? "An errand for today, or a step toward something bigger."
+                ? "One little thing."
                 : modal.kind === "project"
-                  ? "Give your project a name. We’ll take it one step at a time."
-                  : modal.kind === "import"
-                    ? `This backup has ${modal.data.projects.length} projects and ${modal.data.items.length} items. It will replace all current workspace data.`
-                    : modal.kind === "reset"
-                      ? "This deletes all items, projects, and history in this workspace. Export a backup first if you want to keep them."
+                  ? "Make room for an idea."
+                  : modal.kind === "bite"
+                    ? "A smaller bite."
+                    : modal.kind === "rename"
+                      ? "Edit your item"
                       : modal.kind === "delete"
                         ? modal.item.completedAt
-                          ? "This permanently removes the item from your completed history. This can’t be undone."
-                          : "This item will be removed from the project and queue. This can’t be undone."
+                          ? "Remove completed item?"
+                          : "Remove this item?"
                         : modal.kind === "deleteProject"
-                          ? "This permanently deletes the project and its unfinished items, removing them from the active queue. Completed items will stay in your history."
+                          ? "Delete this project?"
                           : modal.kind === "completeProject"
-                            ? state.items.some(
-                                (item) =>
-                                  item.projectId === modal.project.id &&
-                                  !item.completedAt,
-                              )
-                              ? "This will mark the project and its remaining items as completed and remove them from Do now. You can reopen the project later."
-                              : "Move this project to Completed. You can reopen it later."
-                            : undefined
+                            ? "Complete this project?"
+                            : modal.kind === "import"
+                              ? "Restore this workspace?"
+                              : "Ready for a fresh start?"
           }
-          onClose={() => {
-            if (!restoring) setModal(null);
-          }}
+          description={
+            modal.kind === "completeTimedItem"
+              ? "Save the time you spent, or finish without recording it."
+              : modal.kind === "bite"
+                ? "Make the first step a little easier. The rest will be waiting for you."
+                : modal.kind === "item"
+                  ? "An errand for today, or a step toward something bigger."
+                  : modal.kind === "project"
+                    ? "Give your project a name. We’ll take it one step at a time."
+                    : modal.kind === "import"
+                      ? `This backup has ${modal.data.projects.length} projects and ${modal.data.items.length} items. It will replace all current workspace data.`
+                      : modal.kind === "reset"
+                        ? "This deletes all items, projects, and history in this workspace. Export a backup first if you want to keep them."
+                        : modal.kind === "delete"
+                          ? modal.item.completedAt
+                            ? "This permanently removes the item from your completed history. This can’t be undone."
+                            : "This item will be removed from the project and queue. This can’t be undone."
+                          : modal.kind === "deleteProject"
+                            ? "This permanently deletes the project and its unfinished items, removing them from the active queue. Completed items will stay in your history."
+                            : modal.kind === "completeProject"
+                              ? state.items.some(
+                                  (item) =>
+                                    item.projectId === modal.project.id &&
+                                    !item.completedAt,
+                                )
+                                ? "This will mark the project and its remaining items as completed and remove them from Do now. You can reopen the project later."
+                                : "Move this project to Completed. You can reopen it later."
+                              : undefined
+          }
+          onClose={closeModal}
         >
+          {modal.kind === "completeTimedItem" && (
+            <>
+              <p className="confirm-item">{modal.item.title}</p>
+              <div className="completion-time-summary">
+                <Timer size={24} />
+                <div>
+                  <span>Time spent</span>
+                  <strong>{formatElapsedTime(modal.elapsedSeconds)}</strong>
+                </div>
+              </div>
+              <p className="small muted">Timer paused while you choose.</p>
+              {formError && (
+                <p className="form-error" role="alert">
+                  {formError}
+                </p>
+              )}
+              <div className="timed-completion-actions">
+                <button
+                  type="button"
+                  className="primary-button"
+                  onClick={() => confirmTimedCompletion(true)}
+                >
+                  <Check size={18} /> Save time &amp; complete
+                </button>
+                <button
+                  type="button"
+                  className="secondary-button"
+                  onClick={() => confirmTimedCompletion(false)}
+                >
+                  Complete without time
+                </button>
+                <button
+                  type="button"
+                  className="text-button"
+                  onClick={closeModal}
+                >
+                  Keep working
+                </button>
+              </div>
+            </>
+          )}
           {["item", "project", "bite", "rename"].includes(modal.kind) && (
             <form onSubmit={submitForm} className="sheet-form">
               {modal.kind === "item" && (

@@ -16,6 +16,7 @@ export interface Item {
   createdAt: string;
   completedAt: string | null;
   deletedProjectName?: string;
+  timeSpentSeconds?: number;
 }
 
 export type QueueSlot =
@@ -233,11 +234,20 @@ export function deleteItem(state: AppState, itemId: string): AppState {
   return { ...next, queue: resolveQueue(next).map(({ slot }) => slot) };
 }
 
-export function completeCurrent(state: AppState): AppState {
+export function completeCurrent(state: AppState, timeSpentSeconds?: number): AppState {
+  if (timeSpentSeconds !== undefined && (!Number.isSafeInteger(timeSpentSeconds) || timeSpentSeconds < 0)) {
+    throw new Error('Time spent must be a nonnegative whole number of seconds.');
+  }
   const current = resolveQueue(state)[0];
   if (!current) return state;
   const timestamp = now();
-  const items = state.items.map((item) => item.id === current.item.id ? { ...item, completedAt: timestamp } : item);
+  const items = state.items.map((item) => {
+    if (item.id !== current.item.id) return item;
+    const completed = { ...item, completedAt: timestamp };
+    delete completed.timeSpentSeconds;
+    if (timeSpentSeconds !== undefined) completed.timeSpentSeconds = timeSpentSeconds;
+    return completed;
+  });
   // A project stays open until the user explicitly marks the project complete.
   return reprocess({ ...state, items, queue: state.queue.filter((slot) => slot.id !== current.slot.id) });
 }
@@ -251,6 +261,7 @@ export function putBackItem(state: AppState, itemId: string): AppState {
   if (source.projectId && !parent) return state;
 
   const restored = { ...source, completedAt: null };
+  delete restored.timeSpentSeconds;
   const items = [...state.items];
   items[sourceIndex] = restored;
   if (parent) {
@@ -384,7 +395,15 @@ export function validateImport(input: unknown): AppState {
   const items = array(data.items, 'items').map((value): Item => {
     const item = record(value, 'item');
     const deletedProjectName = item.deletedProjectName === undefined ? undefined : string(item.deletedProjectName, 'deleted project name');
-    return { id: string(item.id, 'item ID'), projectId: item.projectId === null ? null : string(item.projectId, 'item projectId'), title: string(item.title, 'item title'), createdAt: timestamp(item.createdAt, 'item createdAt'), completedAt: nullableTimestamp(item.completedAt, 'item completedAt'), ...(deletedProjectName === undefined ? {} : { deletedProjectName }) };
+    const completedAt = nullableTimestamp(item.completedAt, 'item completedAt');
+    const timeSpentSeconds = item.timeSpentSeconds;
+    if (timeSpentSeconds !== undefined) {
+      if (typeof timeSpentSeconds !== 'number' || !Number.isSafeInteger(timeSpentSeconds) || timeSpentSeconds < 0) {
+        throw new Error('Invalid backup: item time spent must be a nonnegative whole number of seconds.');
+      }
+      if (!completedAt) throw new Error('Invalid backup: only completed items can have time spent.');
+    }
+    return { id: string(item.id, 'item ID'), projectId: item.projectId === null ? null : string(item.projectId, 'item projectId'), title: string(item.title, 'item title'), createdAt: timestamp(item.createdAt, 'item createdAt'), completedAt, ...(deletedProjectName === undefined ? {} : { deletedProjectName }), ...(timeSpentSeconds === undefined ? {} : { timeSpentSeconds }) };
   });
   const queue = array(data.queue, 'queue').map((value): QueueSlot => {
     const slot = record(value, 'queue slot');
@@ -435,8 +454,8 @@ export function exportCsv(state: AppState, list: 'queue' | 'completed' | 'active
   let items = list === 'queue' ? resolveQueue(state).map((entry) => entry.item) : state.items;
   if (list === 'completed') items = items.filter((item) => item.completedAt);
   const rows = [
-    ['Title', 'Project', 'Status', 'Created at', 'Completed at'],
-    ...items.map((item) => [item.title, (item.projectId ? projects.get(item.projectId)?.name : undefined) ?? item.deletedProjectName ?? '', item.completedAt ? 'Completed' : item.projectId && projects.get(item.projectId)?.status === 'inactive' ? 'Inactive' : 'Active', item.createdAt, item.completedAt ?? '']),
+    ['Title', 'Project', 'Status', 'Created at', 'Completed at', 'Time spent (seconds)'],
+    ...items.map((item) => [item.title, (item.projectId ? projects.get(item.projectId)?.name : undefined) ?? item.deletedProjectName ?? '', item.completedAt ? 'Completed' : item.projectId && projects.get(item.projectId)?.status === 'inactive' ? 'Inactive' : 'Active', item.createdAt, item.completedAt ?? '', item.timeSpentSeconds === undefined ? '' : String(item.timeSpentSeconds)]),
   ];
   return rows.map((row) => row.map(csvCell).join(',')).join('\r\n');
 }
