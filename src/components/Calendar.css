@@ -1,0 +1,333 @@
+.theme .calendar-intro {
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.75;
+  margin: -10px 0 28px;
+  max-width: 520px;
+}
+.calendar-layout {
+  display: grid;
+  grid-template-columns: minmax(260px, 0.95fr) minmax(0, 1.1fr);
+  gap: 30px;
+  align-items: start;
+}
+.calendar-month {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  padding: 22px;
+}
+.calendar-month-heading,
+.calendar-month-heading > div,
+.calendar-month-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 6px;
+}
+.calendar-month-heading h2 {
+  font-family: var(--heading);
+  font-size: 23px;
+  font-weight: 400;
+}
+.calendar-weekdays,
+.calendar-days {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  text-align: center;
+  gap: 3px;
+}
+.calendar-weekdays {
+  margin: 22px 0 10px;
+  font-size: 10px;
+  color: var(--muted);
+}
+.calendar-days button {
+  min-width: 0;
+  min-height: 44px;
+  border-radius: 10px;
+  font-size: 12px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  border: 1px solid transparent;
+}
+.calendar-days button:hover {
+  background: var(--soft);
+}
+.calendar-days button.outside-month {
+  color: var(--muted);
+}
+.calendar-days button.is-today {
+  border-color: var(--accent);
+  font-weight: 700;
+}
+.calendar-days button[aria-pressed="true"] {
+  background: var(--accent);
+  color: var(--on-accent);
+}
+.calendar-day-dot {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+}
+.calendar-day-dot.has-items {
+  background: currentColor;
+}
+.calendar-month-footer {
+  margin-top: 18px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+  font-size: 10px;
+  color: var(--muted);
+}
+.calendar-legend-dot {
+  display: inline-block;
+  width: 5px;
+  height: 5px;
+  background: var(--accent);
+  border-radius: 50%;
+  margin-right: 7px;
+  vertical-align: middle;
+}
+.calendar-reminder-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  background: var(--soft);
+  padding: 14px;
+  border-radius: 10px;
+  margin-top: 20px;
+}
+.calendar-reminder-note svg {
+  flex-shrink: 0;
+  color: var(--accent);
+  margin-top: 2px;
+}
+.calendar-reminder-note p {
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.7;
+}
+.calendar-agenda-heading {
+  padding: 4px 0 20px;
+  border-bottom: 1px solid var(--line);
+}
+.theme .calendar-agenda-heading h2 {
+  font-family: var(--heading);
+  font-size: 25px;
+  font-weight: 400;
+  line-height: 1.35;
+  margin-top: 9px;
+}
+.schedule-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+.schedule-row {
+  display: grid;
+  grid-template-columns: 78px minmax(0, 1fr);
+  gap: 15px;
+  padding: 24px 0;
+  border-bottom: 1px solid var(--line);
+}
+.schedule-row > time {
+  font-size: 12px;
+  font-weight: 500;
+  padding-top: 4px;
+  color: var(--accent);
+}
+.schedule-item-body {
+  padding-left: 16px;
+  border-left: 2px solid var(--line);
+  min-width: 0;
+}
+.schedule-title {
+  padding: 0;
+  text-align: left;
+  line-height: 1.5;
+  font-size: 15px;
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+.schedule-title:hover {
+  text-decoration: underline;
+}
+.theme .schedule-item-body > p {
+  font-size: 10px;
+  color: var(--muted);
+  margin-top: 6px;
+}
+.schedule-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+}
+.schedule-actions .text-button {
+  font-size: 11px;
+  margin-right: auto;
+}
+.schedule-row.is-completed .schedule-title {
+  text-decoration: line-through;
+  color: var(--muted);
+}
+.calendar-empty {
+  text-align: center;
+  padding: 42px 12px;
+  color: var(--muted);
+  border-bottom: 1px solid var(--line);
+}
+.calendar-empty > svg {
+  color: var(--accent);
+  margin-bottom: 14px;
+}
+.calendar-empty h3 {
+  font-family: var(--heading);
+  font-size: 24px;
+  font-weight: 400;
+  color: var(--ink);
+}
+.theme .calendar-empty p {
+  font-size: 12px;
+  margin-top: 9px;
+}
+.calendar-empty .text-button {
+  margin: 18px auto 0;
+  font-size: 11px;
+}
+.calendar-upcoming {
+  margin-top: 28px;
+}
+.calendar-upcoming h3 {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--muted);
+  margin-bottom: 10px;
+}
+.calendar-upcoming > button {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  text-align: left;
+  width: 100%;
+  padding: 13px 0;
+  border-bottom: 1px solid var(--line);
+}
+.calendar-upcoming > button > span {
+  flex: 1;
+  min-width: 0;
+}
+.calendar-upcoming strong {
+  display: block;
+  font-size: 12px;
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+.calendar-upcoming small {
+  display: block;
+  font-size: 10px;
+  margin-top: 4px;
+  color: var(--muted);
+}
+.theme .calendar-timezone {
+  font-size: 10px;
+  color: var(--muted);
+  line-height: 1.6;
+  margin-top: 18px;
+}
+.schedule-date-fields {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
+  gap: 15px;
+}
+.schedule-date-fields input {
+  min-width: 0;
+}
+.scheduled-reminder {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+}
+.scheduled-reminder .focus-frame h1 {
+  overflow-wrap: anywhere;
+}
+.theme .reminder-countdown {
+  font-size: 19px;
+  color: var(--accent);
+  margin-top: 22px;
+}
+.reminder-date {
+  display: block;
+  margin-top: 10px;
+  font-size: 13px;
+  color: var(--muted);
+}
+.schedule-instead {
+  font-size: 12px;
+  margin: 5px 0 24px;
+}
+@media (max-width: 1100px) {
+  .calendar-layout {
+    grid-template-columns: 1fr;
+    gap: 28px;
+  }
+  .calendar-month {
+    max-width: 500px;
+    width: 100%;
+  }
+}
+@media (max-width: 700px) {
+  .theme .calendar-intro {
+    font-size: 12px;
+    margin-top: 0;
+  }
+  .calendar-month {
+    padding: 16px;
+    max-width: none;
+  }
+  .calendar-month-heading h2 {
+    font-size: 22px;
+  }
+  .calendar-days {
+    gap: 2px;
+  }
+  .calendar-days button {
+    min-height: 39px;
+  }
+  .theme .calendar-agenda-heading h2 {
+    font-size: 24px;
+  }
+  .schedule-row {
+    grid-template-columns: 67px minmax(0, 1fr);
+    gap: 8px;
+  }
+  .schedule-date-fields {
+    gap: 10px;
+  }
+  .sheet-form .schedule-date-fields input {
+    padding: 10px 6px;
+    font-size: 13px;
+  }
+  .theme .bottom-nav {
+    padding-left: 5px;
+    padding-right: 5px;
+    gap: 0;
+  }
+  .theme .bottom-nav button {
+    flex: 1 1 0;
+    padding-left: 1px;
+    padding-right: 1px;
+    font-size: 8px;
+  }
+  .reminder-date {
+    font-size: 12px;
+  }
+  .theme .reminder-countdown {
+    font-size: 17px;
+  }
+}

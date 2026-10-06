@@ -15,6 +15,8 @@ A mobile-first productivity app that shows one item at a time. Five complete vis
 ## Included
 
 - One current item, with its project shown underneath. Completing an item timestamps it and advances the queue.
+- **Calendar** holds scheduled items on a separate timeline with a local date and time. Add one from the calendar or the **Add item** sheet; edit, complete, reopen, or remove it from its day’s timeline. Scheduled items never enter the master list.
+- After completing a task, **Do now** shows any due scheduled reminder before the next task: once 3 hours before, then once 30 minutes before. **Got it** acknowledges only the reminder. Multiple reminders appear in scheduled-time order. If both milestones have passed, only the 30-minute reminder appears; reminders expire at the scheduled time. An empty master list can show reminders immediately. Reminder acknowledgments survive reloads and are included with scheduled items in JSON backups and cloud sync.
 - Completing an item plays a short chime and a brief confetti celebration. The toast includes today's completed-item count, including the item just finished, using your local calendar day. The next task stays usable immediately; reduced-motion preferences show a still celebration instead.
 - Use **Edit** on Do now to change the current item's name without moving it in the queue or interrupting its timer.
 - Use **View project** beside the current item's project name to open its details, then **Back to Do now** to return to the current item.

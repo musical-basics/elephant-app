@@ -13,6 +13,7 @@ import {
   ArrowUp,
   ArrowUpRight,
   BarChart3,
+  CalendarDays,
   Check,
   CheckCheck,
   ChevronDown,
@@ -50,6 +51,9 @@ import CompletionCelebration from "./components/CompletionCelebration";
 import ProjectSearch from "./components/ProjectSearch";
 import Analytics from "./components/Analytics";
 import FocusTimer from "./components/FocusTimer";
+import Calendar from "./components/Calendar";
+import ScheduledItemSheet from "./components/ScheduledItemSheet";
+import ScheduledReminderCard from "./components/ScheduledReminderCard";
 import { Botanical, Elephant } from "./components/Elephant";
 import Sheet from "./components/Sheet";
 import { designs } from "./lib/designs";
@@ -77,6 +81,15 @@ import { useWorkspace } from "./lib/useWorkspace";
 import { useCountdown } from "./lib/useCountdown";
 import { playCompletionSound } from "./lib/completionSound";
 import { formatElapsedTime } from "./lib/duration";
+import {
+  acknowledgeReminder,
+  deleteScheduledItem,
+  getActiveReminder,
+  presentReminder,
+  saveScheduledItem,
+  toggleScheduledItem,
+} from "./lib/schedule";
+import type { ScheduledItem } from "./lib/schedule";
 
 type Screen =
   | "home"
@@ -86,10 +99,13 @@ type Screen =
   | "project"
   | "completed"
   | "analytics"
+  | "calendar"
   | "settings"
   | "queue";
 type Route = { design: DesignId | null; screen: Screen; projectId?: string };
 type Modal =
+  | { kind: "scheduled"; item?: ScheduledItem; date?: string }
+  | { kind: "deleteScheduled"; item: ScheduledItem }
   | { kind: "item"; projectId?: string; afterId?: string }
   | { kind: "project" }
   | { kind: "bite" }
@@ -130,6 +146,7 @@ function readRoute(): Route {
       "project",
       "completed",
       "analytics",
+      "calendar",
       "settings",
       "queue",
     ].includes(screen)
@@ -184,6 +201,8 @@ export default function App() {
   const { state, update } = workspace;
   const [route, setRoute] = useState<Route>(readRoute);
   const [modal, setModal] = useState<Modal | null>(null);
+  const isScheduling =
+    modal?.kind === "scheduled" || modal?.kind === "deleteScheduled";
   const [formError, setFormError] = useState("");
   const [toast, setToast] = useState("");
   const [completionCelebration, setCompletionCelebration] = useState<
@@ -193,6 +212,7 @@ export default function App() {
   const [sort, setSort] = useState("name");
   const [search, setSearch] = useState("");
   const [selectedItem, setSelectedItem] = useState<string | null>(null);
+  const [clockTick, setClockTick] = useState(0);
   const importRef = useRef<HTMLInputElement>(null);
   const avatarRef = useRef<HTMLInputElement>(null);
   const [emailStatus, setEmailStatus] = useState("");
@@ -222,9 +242,14 @@ export default function App() {
   const design = designs.find((d) => d.id === designId) ?? designs[0];
   const queue = resolveQueue(state);
   const current = queue[0];
+  const now = Date.now();
+  const reminder = getActiveReminder(state, now);
   const timerScope = `${workspace.mode}:${workspace.userEmail ?? "local"}`;
   const countdown = useCountdown({
-    itemId: current?.item.isPlaceholder ? null : (current?.item.id ?? null),
+    itemId:
+      reminder || current?.item.isPlaceholder
+        ? null
+        : (current?.item.id ?? null),
     scope: timerScope,
     ready: workspace.ready,
   });
@@ -237,6 +262,34 @@ export default function App() {
     .sort((a, b) => b.completedAt!.localeCompare(a.completedAt!));
   const completedToday = countCompletedToday(completedItems);
   const activeProjects = state.projects.filter((p) => p.status === "active");
+
+  useEffect(() => {
+    const tick = () => setClockTick((value) => value + 1);
+    const timer = window.setInterval(tick, 15_000);
+    window.addEventListener("focus", tick);
+    document.addEventListener("visibilitychange", tick);
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener("focus", tick);
+      document.removeEventListener("visibilitychange", tick);
+    };
+  }, []);
+  useEffect(() => {
+    if (!workspace.ready) return;
+    // An empty queue has no task to interrupt. Otherwise only task completion
+    // presents a new reminder; reloads retain an already-presented reminder.
+    if (!current || (state.activeReminder && !reminder)) {
+      const next = presentReminder(state);
+      if (next !== state) update(next);
+    }
+  }, [
+    state,
+    workspace.ready,
+    clockTick,
+    current?.item.id,
+    Boolean(reminder),
+    update,
+  ]);
 
   useEffect(() => {
     const handler = () => {
@@ -445,6 +498,7 @@ export default function App() {
     { screen: "home", label: "Home", icon: <Home size={20} /> },
     { screen: "focus", label: "Do now", icon: <Circle size={20} /> },
     { screen: "projects-home", label: "Projects", icon: <Layers size={20} /> },
+    { screen: "calendar", label: "Calendar", icon: <CalendarDays size={20} /> },
     {
       screen: "completed",
       label: "Completed",
@@ -727,11 +781,13 @@ export default function App() {
                         className="primary-button start-button"
                         onClick={() => navigate("focus")}
                       >
-                        {current ? "Start working" : "Find your next step"}
+                        {current || reminder
+                          ? "Start working"
+                          : "Find your next step"}
                         <ArrowRight size={19} />
                       </button>
                       <span className="hero-footnote">
-                        {current
+                        {current || reminder
                           ? "Just one item. That’s all you need to see."
                           : "A fresh page. Add something you’d like to do."}
                       </span>
@@ -826,7 +882,7 @@ export default function App() {
 
               {screen === "focus" && (
                 <div
-                  className={`focus-page${countdown.timer ? " timer-open" : ""}${current?.item.isPlaceholder ? " has-placeholder" : ""}`}
+                  className={`focus-page${!reminder && countdown.timer ? " timer-open" : ""}${!reminder && current?.item.isPlaceholder ? " has-placeholder" : ""}`}
                 >
                   <div className="focus-top">
                     <button
@@ -840,7 +896,7 @@ export default function App() {
                       <span className="focus-mode">
                         <span />A MOMENT OF FOCUS
                       </span>
-                      {current && (
+                      {current && !reminder && (
                         <>
                           <button
                             type="button"
@@ -868,7 +924,17 @@ export default function App() {
                       )}
                     </div>
                   </div>
-                  {current ? (
+                  {reminder ? (
+                    <ScheduledReminderCard
+                      item={reminder.item}
+                      offsetMinutes={reminder.offsetMinutes}
+                      now={now}
+                      onAcknowledge={() =>
+                        mutate((s) => acknowledgeReminder(s))
+                      }
+                      onCalendar={() => navigate("calendar")}
+                    />
+                  ) : current ? (
                     <>
                       <div className="focus-center">
                         <div className="focus-symbol">
@@ -1009,6 +1075,26 @@ export default function App() {
                     />
                   )}
                 </div>
+              )}
+
+              {screen === "calendar" && (
+                <Calendar
+                  items={state.scheduledItems}
+                  now={now}
+                  onAdd={(date) => setModal({ kind: "scheduled", date })}
+                  onEdit={(item) => setModal({ kind: "scheduled", item })}
+                  onDelete={(item) =>
+                    setModal({ kind: "deleteScheduled", item })
+                  }
+                  onToggle={(item) =>
+                    mutate(
+                      (s) => toggleScheduledItem(s, item.id),
+                      item.completedAt
+                        ? "Scheduled item reopened."
+                        : "Scheduled item completed.",
+                    )
+                  }
+                />
               )}
 
               {screen === "projects-home" && (
@@ -2210,7 +2296,50 @@ export default function App() {
           </button>
         </div>
       )}
-      {modal && (
+      {modal?.kind === "scheduled" && (
+        <ScheduledItemSheet
+          item={modal.item}
+          date={modal.date}
+          onClose={closeModal}
+          onSave={(title, scheduledAt) => {
+            update((s) =>
+              saveScheduledItem(s, title, scheduledAt, modal.item?.id),
+            );
+            setModal(null);
+            setToast(
+              modal.item
+                ? "Scheduled item updated."
+                : "Added to your calendar.",
+            );
+          }}
+        />
+      )}
+      {modal?.kind === "deleteScheduled" && (
+        <Sheet
+          title="Remove scheduled item?"
+          description="This removes the item and its reminders from your calendar."
+          onClose={closeModal}
+        >
+          <p className="confirm-item">{modal.item.title}</p>
+          <div className="sheet-actions">
+            <button className="secondary-button" onClick={closeModal}>
+              Keep item
+            </button>
+            <button
+              className="danger-button"
+              onClick={() =>
+                submit(
+                  (s) => deleteScheduledItem(s, modal.item.id),
+                  "Scheduled item removed.",
+                )
+              }
+            >
+              Remove scheduled item
+            </button>
+          </div>
+        </Sheet>
+      )}
+      {modal && !isScheduling && (
         <Sheet
           title={
             modal.kind === "completeTimedItem"
@@ -2247,7 +2376,7 @@ export default function App() {
                   : modal.kind === "project"
                     ? "Give your project a name. We’ll take it one step at a time."
                     : modal.kind === "import"
-                      ? `This backup has ${modal.data.projects.length} projects and ${modal.data.items.length} items. It will replace all current workspace data.`
+                      ? `This backup has ${modal.data.projects.length} projects, ${modal.data.items.length} items, and ${modal.data.scheduledItems.length} scheduled items. It will replace all current workspace data.`
                       : modal.kind === "reset"
                         ? "This deletes all items, projects, and history in this workspace. Export a backup first if you want to keep them."
                         : modal.kind === "delete"
@@ -2314,6 +2443,14 @@ export default function App() {
             <form onSubmit={submitForm} className="sheet-form">
               {modal.kind === "item" && (
                 <>
+                  <button
+                    type="button"
+                    className="text-button schedule-instead"
+                    onClick={() => setModal({ kind: "scheduled" })}
+                  >
+                    <CalendarDays size={16} />
+                    Schedule an item for a date and time
+                  </button>
                   <label>
                     What would you like to do?
                     <textarea
@@ -2491,11 +2628,14 @@ export default function App() {
                   className="primary-button"
                   onClick={() => {
                     try {
-                      update((s) =>
-                        updateProject(s, modal.project.id, {
+                      update((s) => {
+                        const finishingCurrent =
+                          resolveQueue(s)[0]?.project?.id === modal.project.id;
+                        const next = updateProject(s, modal.project.id, {
                           status: "completed",
-                        }),
-                      );
+                        });
+                        return finishingCurrent ? presentReminder(next) : next;
+                      });
                       setModal(null);
                       setSelectedItem(null);
                       setToast("Project marked complete.");

@@ -1,3 +1,6 @@
+import { acknowledgeReminder, getActiveReminder, presentReminder } from './schedule';
+import type { ScheduledItem, ScheduledReminder } from './schedule';
+
 export type ProjectStatus = 'active' | 'inactive' | 'completed';
 
 export interface Project {
@@ -32,6 +35,8 @@ export interface AppState {
   projects: Project[];
   items: Item[];
   queue: QueueSlot[];
+  scheduledItems: ScheduledItem[];
+  activeReminder: ScheduledReminder | null;
 }
 
 export interface ResolvedQueueEntry {
@@ -65,6 +70,8 @@ export function createEmptyState(): AppState {
     projects: [],
     items: [],
     queue: [],
+    scheduledItems: [],
+    activeReminder: null,
   };
 }
 
@@ -273,6 +280,7 @@ export function deleteItem(state: AppState, itemId: string): AppState {
 }
 
 export function completeCurrent(state: AppState, timeSpentSeconds?: number): AppState {
+  if (getActiveReminder(state)) return acknowledgeReminder(state);
   if (timeSpentSeconds !== undefined && (!Number.isSafeInteger(timeSpentSeconds) || timeSpentSeconds < 0)) {
     throw new Error('Time spent must be a nonnegative whole number of seconds.');
   }
@@ -287,7 +295,7 @@ export function completeCurrent(state: AppState, timeSpentSeconds?: number): App
     return completed;
   });
   // A project stays open until the user explicitly marks the project complete.
-  return reprocess({ ...state, items, queue: state.queue.filter((slot) => slot.id !== current.slot.id) });
+  return presentReminder(reprocess({ ...state, items, queue: state.queue.filter((slot) => slot.id !== current.slot.id) }));
 }
 
 /** Restore the original completed item to the front without reprocessing others. */
@@ -461,6 +469,26 @@ export function validateImport(input: unknown): AppState {
   unique(projects, 'project');
   unique(items, 'item');
   unique(queue, 'queue slot');
+  // Older workspaces and backups predate the separate scheduled timeline.
+  const scheduledItems = array(data.scheduledItems === undefined ? [] : data.scheduledItems, 'scheduled items').map((value): ScheduledItem => {
+    const item = record(value, 'scheduled item');
+    const acknowledgedReminders = array(item.acknowledgedReminders, 'acknowledged reminders');
+    if (acknowledgedReminders.some((offset) => offset !== 180 && offset !== 30) || new Set(acknowledgedReminders).size !== acknowledgedReminders.length) {
+      throw new Error('Invalid backup: unknown or duplicate scheduled reminder.');
+    }
+    return { id: string(item.id, 'scheduled item ID'), title: string(item.title, 'scheduled item title'), scheduledAt: timestamp(item.scheduledAt, 'scheduled time'), createdAt: timestamp(item.createdAt, 'scheduled item createdAt'), completedAt: nullableTimestamp(item.completedAt, 'scheduled item completedAt'), acknowledgedReminders: acknowledgedReminders as (180 | 30)[] };
+  });
+  unique(scheduledItems, 'scheduled item');
+  let activeReminder: ScheduledReminder | null = null;
+  if (data.activeReminder !== undefined && data.activeReminder !== null) {
+    const reminder = record(data.activeReminder, 'active reminder');
+    const scheduledItemId = string(reminder.scheduledItemId, 'reminder scheduled item ID');
+    const item = scheduledItems.find((entry) => entry.id === scheduledItemId);
+    if ((reminder.offsetMinutes !== 180 && reminder.offsetMinutes !== 30) || !item || item.completedAt || item.acknowledgedReminders.includes(reminder.offsetMinutes)) {
+      throw new Error('Invalid backup: active reminder references a missing, completed, or acknowledged scheduled item.');
+    }
+    activeReminder = { scheduledItemId, offsetMinutes: reminder.offsetMinutes };
+  }
   const projectMap = new Map(projects.map((project) => [project.id, project]));
   for (const item of items) {
     if (item.projectId && !projectMap.has(item.projectId)) throw new Error('Invalid backup: an item references a missing project.');
@@ -472,7 +500,7 @@ export function validateImport(input: unknown): AppState {
     if (unfinished.some((item) => item.isPlaceholder) && unfinished.length !== 1) throw new Error('Invalid backup: a project placeholder must be its only unfinished item.');
   }
   const avatarUrl = profile.avatarUrl === undefined ? undefined : inlineAvatar(profile.avatarUrl);
-  const state: AppState = { version: 1, profile: { name: string(profile.name, 'profile name', true), ...(avatarUrl ? { avatarUrl } : {}) }, settings: { showMasterList: settings.showMasterList }, projects, items, queue };
+  const state: AppState = { version: 1, profile: { name: string(profile.name, 'profile name', true), ...(avatarUrl ? { avatarUrl } : {}) }, settings: { showMasterList: settings.showMasterList }, projects, items, queue, scheduledItems, activeReminder };
   const resolved = resolveQueue(state);
   if (resolved.length !== queue.length) throw new Error('Invalid backup: queue contains a missing, inactive, duplicate, completed, or excess task.');
   const queuedErrands = new Set(queue.flatMap((slot) => slot.kind === 'errand' ? [slot.itemId] : []));

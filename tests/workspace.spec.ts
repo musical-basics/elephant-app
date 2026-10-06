@@ -18,7 +18,7 @@ const LOCAL_KEY = 'elephant.workspace.local.v1';
 const ACCOUNT_KEY = `elephant.workspace.account.${ACCOUNT}.v1`;
 const API_URL = 'https://workspace-tests.supabase.co';
 const emptyState = (): AppState => ({
-  version: 1, profile: { name: '' }, settings: { showMasterList: true }, projects: [], items: [], queue: [],
+  version: 1, profile: { name: '' }, settings: { showMasterList: true }, projects: [], items: [], queue: [], scheduledItems: [], activeReminder: null,
 });
 const legacyEmptyProjectState = (): AppState => ({
   ...emptyState(),
@@ -289,6 +289,23 @@ test.describe('Workspace persistence', () => {
     expect(remote.row?.revision).toBe(8);
     expect(await recoveryCopies(page, ACCOUNT_KEY)).toEqual(['{broken-json']);
     expect(await page.evaluate(() => window.workspace.recoveryNeeded)).toBe(false);
+  });
+
+  test('scheduled items and reminder acknowledgments sync and survive a cloud reload', async ({ page }) => {
+    await signInFixture(page);
+    const remote = await mockCloud(page, { data: emptyState(), revision: 7 });
+    await open(page, cloudUrl);
+    await page.evaluate(async () => {
+      const modulePath = '/src/lib/schedule.ts';
+      const { saveScheduledItem, presentReminder, acknowledgeReminder } = await import(modulePath);
+      window.workspace.update((state) => acknowledgeReminder(presentReminder(saveScheduledItem(state, 'Scheduled call', new Date(Date.now() + 3_600_000).toISOString()))));
+    });
+    await expect.poll(() => remote.row?.data.scheduledItems[0]?.acknowledgedReminders).toEqual([180]);
+    const savedState = remote.row!.data;
+    expect(savedState.items).toEqual([]);
+    expect(savedState.queue).toEqual([]);
+    await page.reload();
+    await expect.poll(() => page.evaluate(() => window.workspace?.state)).toEqual(savedState);
   });
 
   test('a concurrent cloud edit cannot be overwritten by a corrupt-cache restore', async ({ page }) => {
