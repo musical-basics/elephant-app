@@ -2384,28 +2384,21 @@ export default function App() {
                           ? "What’s the next small step?"
                           : undefined
                       }
-                      aria-describedby={
-                        modal.item.isPlaceholder
-                          ? "placeholder-keyboard-hint"
-                          : undefined
-                      }
-                      enterKeyHint={
-                        modal.item.isPlaceholder ? "done" : undefined
-                      }
-                      onKeyDown={
-                        modal.item.isPlaceholder ? submitTaskOnEnter : undefined
-                      }
+                      aria-describedby="edit-item-keyboard-hint"
+                      enterKeyHint="done"
+                      onKeyDown={submitTaskOnEnter}
                       rows={3}
                       maxLength={500}
                       autoFocus
                       required
                     />
                   </label>
-                  {modal.item.isPlaceholder && (
-                    <p id="placeholder-keyboard-hint" className="small muted">
-                      Enter to add · Shift+Enter for a new line
-                    </p>
-                  )}
+                  <p id="edit-item-keyboard-hint" className="small muted">
+                    {modal.item.isPlaceholder
+                      ? "Enter to add"
+                      : "Enter to save"}
+                    {" · Shift+Enter for a new line"}
+                  </p>
                 </>
               )}
               {modal.kind === "bite" && current && (

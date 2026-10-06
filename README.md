@@ -26,7 +26,7 @@ A mobile-first productivity app that shows one item at a time. Five complete vis
 - Use **Mark project complete** to explicitly finish a project; confirmation also completes any remaining real tasks and removes its blank placeholder. **Reopen project** makes it active again.
 - Take a Bite: rename the current step and create its remainder. The first step stays open until explicitly completed.
 - Errands and sequential project items; active, upcoming, and completed projects; editable names and due dates.
-- When adding an item, **Enter** adds it and **Shift+Enter** starts a new line.
+- When adding or editing an item, **Enter** saves it and **Shift+Enter** starts a new line.
 - Project placeholders preserve each project's reserved queue positions when its steps are inserted, reordered, split, or deleted.
 - Long-press a handle to reorder, use the accessible up/down controls, or swipe left to remove an item with confirmation.
 - Select a step to insert immediately after it. New steps otherwise append to their project.
