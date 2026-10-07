@@ -1,4 +1,4 @@
-import type { PianoLesson } from "../src/lib/pianoLessons.ts";
+import type { PianoLesson } from "../src/lib/pianoLessons.js";
 
 export const STUDIO_TIMEZONE = "America/Los_Angeles";
 

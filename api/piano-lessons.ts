@@ -1,6 +1,6 @@
 import { createClient } from "@supabase/supabase-js";
-import { calendarLesson, validDate } from "../server/pianoLessons.ts";
-import type { StudioLessonRow } from "../server/pianoLessons.ts";
+import { calendarLesson, validDate } from "../server/pianoLessons.js";
+import type { StudioLessonRow } from "../server/pianoLessons.js";
 
 function json(body: unknown, status = 200) {
   return Response.json(body, {
