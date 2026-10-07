@@ -1,11 +1,15 @@
 import { createClient } from "@supabase/supabase-js";
 import { calendarLesson, validDate } from "../server/pianoLessons.js";
 import type { StudioLessonRow } from "../server/pianoLessons.js";
+import { hasLocalPianoAccess } from "../server/localPianoAccess.js";
 
 function json(body: unknown, status = 200) {
   return Response.json(body, {
     status,
-    headers: { "Cache-Control": "private, no-store", Vary: "Authorization" },
+    headers: {
+      "Cache-Control": "private, no-store",
+      Vary: "Authorization, X-Piano-Key",
+    },
   });
 }
 
@@ -14,7 +18,12 @@ export async function GET(request: Request): Promise<Response> {
   const token = request.headers
     .get("authorization")
     ?.match(/^Bearer (\S+)$/i)?.[1];
-  if (!token) return json({ error: "Sign in to view piano lessons." }, 401);
+  const localAccess = hasLocalPianoAccess(request);
+  if (!token && !localAccess)
+    return json(
+      { error: "Open your private calendar link to connect piano lessons." },
+      401,
+    );
 
   const url = new URL(request.url);
   const from = url.searchParams.get("from") || "";
@@ -30,7 +39,11 @@ export async function GET(request: Request): Promise<Response> {
   const ownerId = process.env.PIANO_STUDIO_OWNER_ID;
   const studioUrl = process.env.PIANO_STUDIO_SUPABASE_URL;
   const studioKey = process.env.PIANO_STUDIO_SERVICE_KEY;
-  if (!authUrl || !authKey || !ownerId || !studioUrl || !studioKey)
+  if (
+    !studioUrl ||
+    !studioKey ||
+    (!localAccess && (!authUrl || !authKey || !ownerId))
+  )
     return json(
       { error: "The piano studio connection is not configured." },
       503,
@@ -48,20 +61,22 @@ export async function GET(request: Request): Promise<Response> {
           fetch(input, { ...init, signal: AbortSignal.timeout(10_000) }),
       },
     };
-    const auth = createClient(authUrl, authKey, options);
-    // Validate with the issuing auth server; never trust a decoded JWT/user ID.
-    const {
-      data: { user },
-      error: authError,
-    } = await auth.auth.getUser(token);
-    if (authError || !user)
-      return json({ error: "Sign in again to view piano lessons." }, 401);
-    if (user.id !== ownerId || !user.email_confirmed_at)
-      return json({
-        connected: false,
-        lessons: [],
-        fetchedAt: new Date().toISOString(),
-      });
+    if (!localAccess) {
+      const auth = createClient(authUrl!, authKey!, options);
+      // Validate with the issuing auth server; never trust a decoded JWT/user ID.
+      const {
+        data: { user },
+        error: authError,
+      } = await auth.auth.getUser(token);
+      if (authError || !user)
+        return json({ error: "Sign in again to view piano lessons." }, 401);
+      if (user.id !== ownerId || !user.email_confirmed_at)
+        return json({
+          connected: false,
+          lessons: [],
+          fetchedAt: new Date().toISOString(),
+        });
+    }
 
     const studio = createClient(studioUrl, studioKey, options);
     const lessons: StudioLessonRow[] = [];

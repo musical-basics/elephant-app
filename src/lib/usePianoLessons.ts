@@ -12,8 +12,10 @@ export function usePianoLessons(
   token: string | null,
   from: string,
   to: string,
+  localKey: string | null = null,
 ) {
-  const key = JSON.stringify([token, from, to]);
+  const key = JSON.stringify([token, localKey, from, to]);
+  const connected = Boolean(token || localKey);
   const [state, setState] = useState<FeedState>({
     key: "",
     feed: null,
@@ -24,7 +26,7 @@ export function usePianoLessons(
   const refresh = useCallback(() => setRefreshId((id) => id + 1), []);
 
   useEffect(() => {
-    if (!token) return;
+    if (!connected) return;
     let active = true;
     let pending = false;
     let controller: AbortController | null = null;
@@ -43,7 +45,9 @@ export function usePianoLessons(
         const response = await fetch(
           `/api/piano-lessons?${new URLSearchParams({ from, to })}`,
           {
-            headers: { Authorization: `Bearer ${token}` },
+            headers: localKey
+              ? { "X-Piano-Key": localKey }
+              : { Authorization: `Bearer ${token}` },
             cache: "no-store",
             signal: controller.signal,
           },
@@ -51,7 +55,9 @@ export function usePianoLessons(
         if (!response.ok)
           throw new Error(
             response.status === 401
-              ? "Sign in again to refresh piano lessons."
+              ? localKey
+                ? "This piano connection has expired. Open your private calendar link again."
+                : "Sign in again to refresh piano lessons."
               : "Piano lessons could not refresh. Please try again.",
           );
         const feed = (await response.json()) as PianoLessonFeed;
@@ -90,14 +96,14 @@ export function usePianoLessons(
       window.removeEventListener("online", onVisible);
       document.removeEventListener("visibilitychange", onVisible);
     };
-  }, [token, from, to, key, refreshId]);
+  }, [token, localKey, connected, from, to, key, refreshId]);
 
   // Synchronously hide the old account/range, even before effect cleanup runs.
-  const current = token && state.key === key ? state : null;
+  const current = connected && state.key === key ? state : null;
   return {
     feed: current?.feed ?? null,
     error: current?.error ?? null,
-    loading: !!token && (current?.loading ?? true),
+    loading: connected && (current?.loading ?? true),
     refresh,
   };
 }

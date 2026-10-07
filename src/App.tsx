@@ -79,6 +79,7 @@ import {
 } from "./lib/model";
 import type { AppState, Item, Project } from "./lib/model";
 import { useWorkspace } from "./lib/useWorkspace";
+import type { LocalPianoConnection } from "./lib/localPianoConnection";
 import { useCountdown } from "./lib/useCountdown";
 import {
   playCompletionSound,
@@ -200,8 +201,8 @@ function downloadFile(content: string, name: string, type: string) {
   window.setTimeout(() => URL.revokeObjectURL(url), 30_000);
 }
 
-export default function App() {
-  const workspace = useWorkspace();
+export default function App({ localPiano }: { localPiano: LocalPianoConnection }) {
+  const workspace = useWorkspace(localPiano.preferLocal);
   const { state, update } = workspace;
   const [route, setRoute] = useState<Route>(readRoute);
   const [modal, setModal] = useState<Modal | null>(null);
@@ -1089,6 +1090,7 @@ export default function App() {
                 <Calendar
                   items={state.scheduledItems}
                   accessToken={workspace.accessToken}
+                  localPiano={localPiano}
                   now={now}
                   onAdd={(date) => setModal({ kind: "scheduled", date })}
                   onEdit={(item) => setModal({ kind: "scheduled", item })}
@@ -2103,7 +2105,13 @@ export default function App() {
                           {workspace.error}
                         </p>
                       )}
-                      {workspace.userEmail ? (
+                      {localPiano.preferLocal ? (
+                        <p className="small local-explanation">
+                          Your items and projects are saved in this browser.
+                          Piano lessons connect directly to this workspace—no
+                          Elephant sign-in is needed.
+                        </p>
+                      ) : workspace.userEmail ? (
                         <>
                           <div className="setting-row">
                             <div>

@@ -19,6 +19,7 @@ import type { ScheduledItem } from "../lib/schedule";
 import { PIANO_STUDIO_URL } from "../lib/pianoLessons";
 import type { PianoLesson } from "../lib/pianoLessons";
 import { usePianoLessons } from "../lib/usePianoLessons";
+import type { LocalPianoConnection } from "../lib/localPianoConnection";
 import "./Calendar.css";
 
 type CalendarEntry = ScheduledItem | PianoLesson;
@@ -32,6 +33,7 @@ function isCompleted(item: CalendarEntry): boolean {
 export default function Calendar({
   items,
   accessToken,
+  localPiano,
   now,
   onAdd,
   onEdit,
@@ -40,6 +42,7 @@ export default function Calendar({
 }: {
   items: ScheduledItem[];
   accessToken: string | null;
+  localPiano: LocalPianoConnection;
   now: number;
   onAdd: (date: string) => void;
   onEdit: (item: ScheduledItem) => void;
@@ -68,7 +71,9 @@ export default function Calendar({
     accessToken,
     localDateKey(first),
     localDateKey(last),
+    localPiano.key,
   );
+  const hasPianoConnection = Boolean(accessToken || localPiano.key);
   const ordered: CalendarEntry[] = [
     ...items,
     ...(piano.feed?.lessons ?? []),
@@ -126,7 +131,7 @@ export default function Calendar({
         A time and a place for what’s coming up. Your scheduled items have their
         own timeline.
       </p>
-      {(!accessToken || piano.feed?.connected !== false) && (
+      {(!hasPianoConnection || piano.feed?.connected !== false) && (
         <section
           className="calendar-studio"
           aria-label="Piano studio connection"
@@ -135,15 +140,21 @@ export default function Calendar({
           <div>
             <strong>Piano studio</strong>
             <p role="status">
-              {!accessToken
-                ? "Sign in to your connected Elephant account to see your piano lessons."
+              {!hasPianoConnection
+                ? "Open your private calendar link to connect piano lessons to this browser. No Elephant sign-in needed."
                 : piano.error
                   ? `${piano.error}${piano.feed ? " Showing the last loaded schedule." : ""}`
                   : piano.loading
                     ? "Refreshing piano lessons…"
                     : `Booked lessons sync automatically · Updated ${new Date(piano.feed!.fetchedAt).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })}`}
             </p>
-            {accessToken && piano.feed?.connected && (
+            {localPiano.storageError && (
+              <p role="alert">
+                This browser could not save the lesson connection. Keep your
+                private calendar link to reconnect next time.
+              </p>
+            )}
+            {hasPianoConnection && piano.feed?.connected && (
               <a
                 href={PIANO_STUDIO_URL}
                 target="_blank"
@@ -153,7 +164,7 @@ export default function Calendar({
               </a>
             )}
           </div>
-          {accessToken && (
+          {hasPianoConnection && (
             <button
               className="icon-button"
               aria-label="Refresh piano lessons"

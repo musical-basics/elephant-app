@@ -5,6 +5,7 @@ import type { ViteDevServer } from "vite";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { PianoLesson } from "../src/lib/pianoLessons";
+import { readFile } from "node:fs/promises";
 
 const authUrl = "https://piano-calendar-tests.supabase.co";
 const account = "10000000-0000-4000-8000-000000000001";
@@ -222,7 +223,7 @@ test("failed refresh keeps a labeled stale schedule; sign-out hides lesson data"
   await expect(page.locator(".is-lesson")).toHaveCount(0);
   await expect(
     page.getByRole("region", { name: "Piano studio connection" }),
-  ).toContainText("Sign in");
+  ).toContainText("No Elephant sign-in needed");
 });
 
 test("other accounts see only their own calendar", async ({ page }) => {
@@ -236,4 +237,157 @@ test("other accounts see only their own calendar", async ({ page }) => {
   await expect(
     page.getByRole("region", { name: "Piano studio connection" }),
   ).toHaveCount(0);
+});
+
+test("private connection opens the existing desktop workspace despite a saved cloud sign-in, and survives reload", async ({
+  page,
+}) => {
+  await setup(page);
+  const localKey = "a".repeat(43);
+  const state = {
+    version: 1,
+    profile: { name: "Desktop Owner" },
+    settings: { showMasterList: true },
+    projects: [],
+    items: [
+      {
+        id: "desktop-task",
+        projectId: null,
+        title: "My existing desktop task",
+        createdAt: "2026-10-01T00:00:00Z",
+        completedAt: null,
+      },
+    ],
+    queue: [
+      {
+        id: "desktop-slot",
+        kind: "errand",
+        itemId: "desktop-task",
+        createdAt: "2026-10-01T00:00:00Z",
+      },
+    ],
+    activeReminder: null,
+    scheduledItems: [
+      {
+        id: "desktop-appointment",
+        title: "Desktop appointment",
+        scheduledAt: "2026-10-07T21:00:00Z",
+        createdAt: "2026-10-01T00:00:00Z",
+        completedAt: null,
+        acknowledgedReminders: [],
+      },
+    ],
+  };
+  const cloudCache = JSON.stringify({
+    storageVersion: 1,
+    revision: 4,
+    dirty: true,
+    state: { ...state, profile: { name: "Account Owner" } },
+  });
+  await page.addInitScript(
+    ({ state, account, cloudCache }) => {
+      if (!localStorage.getItem("elephant.workspace.local.v1"))
+        localStorage.setItem(
+          "elephant.workspace.local.v1",
+          JSON.stringify({
+            storageVersion: 1,
+            revision: null,
+            dirty: false,
+            state,
+          }),
+        );
+      if (!localStorage.getItem(`elephant.workspace.account.${account}.v1`))
+        localStorage.setItem(
+          `elephant.workspace.account.${account}.v1`,
+          cloudCache,
+        );
+    },
+    { state, account, cloudCache },
+  );
+  const cloudRequests: string[] = [];
+  page.on("request", (request) => {
+    if (request.url().includes("/rest/v1/elephant_workspaces"))
+      cloudRequests.push(request.url());
+  });
+  await page.route("**/api/piano-lessons?**", async (route) => {
+    expect(route.request().headers()["x-piano-key"]).toBe(localKey);
+    expect(route.request().headers().authorization).toBeUndefined();
+    await route.fulfill({
+      json: {
+        connected: true,
+        lessons: [lesson],
+        fetchedAt: "2026-10-07T16:00:00Z",
+      },
+    });
+  });
+  await page.goto(`${baseUrl}/#piano-connect=${localKey}`);
+  await expect(page).toHaveURL(`${baseUrl}/#/still/calendar`);
+  await expect(page.locator(".schedule-title")).toHaveText([
+    "Desktop appointment",
+    lesson.title,
+  ]);
+  await page.reload();
+  await expect(page.locator(".schedule-title")).toHaveText([
+    "Desktop appointment",
+    lesson.title,
+  ]);
+  await page.goto(`${baseUrl}/#/still/focus`);
+  await expect(
+    page.getByRole("heading", {
+      name: "My existing desktop task",
+      exact: true,
+    }),
+  ).toBeVisible();
+  await page.goto(`${baseUrl}/#/still/settings`);
+  await expect(
+    page.getByText(/Piano lessons connect directly to this workspace/),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Send sign-in link" }),
+  ).toHaveCount(0);
+  const downloaded = page.waitForEvent("download");
+  await page
+    .getByRole("button", { name: "Download backup", exact: true })
+    .click();
+  const path = await (await downloaded).path();
+  const backup = await readFile(path!, "utf8");
+  expect(backup).not.toContain(localKey);
+  expect(backup).not.toContain("Test Student");
+  expect(JSON.parse(backup).items).toEqual(state.items);
+  expect(
+    await page.evaluate(
+      (account) =>
+        localStorage.getItem(`elephant.workspace.account.${account}.v1`),
+      account,
+    ),
+  ).toBe(cloudCache);
+  expect(cloudRequests).toEqual([]);
+});
+
+test("private connection also works with no saved Elephant account", async ({
+  page,
+}) => {
+  await page.clock.install({ time: new Date("2026-10-07T16:00:00Z") });
+  const localKey = "b".repeat(43);
+  let authRequests = 0;
+  await page.route(`${authUrl}/**`, async (route) => {
+    authRequests++;
+    await route.fulfill({ status: 401, json: {} });
+  });
+  await page.route("**/api/piano-lessons?**", async (route) => {
+    expect(route.request().headers()["x-piano-key"]).toBe(localKey);
+    expect(route.request().headers().authorization).toBeUndefined();
+    await route.fulfill({
+      json: {
+        connected: true,
+        lessons: [lesson],
+        fetchedAt: "2026-10-07T16:00:00Z",
+      },
+    });
+  });
+  await page.goto(`${baseUrl}/#piano-connect=${localKey}`);
+  await expect(page.locator(".is-lesson")).toHaveCount(1);
+  await page.reload();
+  await expect(page.locator(".is-lesson")).toHaveCount(1);
+  expect(authRequests).toBe(0);
 });

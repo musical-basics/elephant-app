@@ -1,8 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { GET } from "../api/piano-lessons";
 import { calendarLesson, studioTimestamp } from "./pianoLessons";
+import { createHash } from "node:crypto";
 
 const owner = "10000000-0000-4000-8000-000000000001";
+const localKey = "a".repeat(43);
 const row = {
   id: "lesson-1",
   date: "2026-10-07",
@@ -24,6 +26,10 @@ beforeEach(() => {
   vi.stubEnv("PIANO_STUDIO_SUPABASE_URL", "https://studio-db.test");
   vi.stubEnv("PIANO_STUDIO_SERVICE_KEY", "private-studio-key");
   vi.stubEnv("PIANO_STUDIO_OWNER_ID", owner);
+  vi.stubEnv(
+    "PIANO_STUDIO_LOCAL_KEY_HASH",
+    createHash("sha256").update(localKey).digest("hex"),
+  );
 });
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -59,6 +65,48 @@ function mockServices(userId = owner, confirmed = true) {
 }
 
 describe("private piano lesson feed", () => {
+  it("reads lessons with a local calendar key without any Elephant account or auth configuration", async () => {
+    vi.stubEnv("VITE_SUPABASE_URL", "");
+    vi.stubEnv("VITE_SUPABASE_PUBLISHABLE_KEY", "");
+    vi.stubEnv("PIANO_STUDIO_OWNER_ID", "");
+    const { studioRequests, fetchMock } = mockServices();
+    const response = await GET(
+      new Request(endpoint, { headers: { "X-Piano-Key": localKey } }),
+    );
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      connected: true,
+      lessons: [{ title: "Piano lesson · Test Student" }],
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(studioRequests).toHaveLength(1);
+  });
+
+  it.each(["wrong", "b".repeat(43), ""])(
+    "rejects an invalid local key before reading lessons (%s)",
+    async (key) => {
+      const { fetchMock } = mockServices();
+      expect(
+        (await GET(new Request(endpoint, { headers: { "X-Piano-Key": key } })))
+          .status,
+      ).toBe(401);
+      expect(fetchMock).not.toHaveBeenCalled();
+    },
+  );
+
+  it("revoking the local key immediately blocks local access", async () => {
+    const { fetchMock } = mockServices();
+    vi.stubEnv("PIANO_STUDIO_LOCAL_KEY_HASH", "");
+    expect(
+      (
+        await GET(
+          new Request(endpoint, { headers: { "X-Piano-Key": localKey } }),
+        )
+      ).status,
+    ).toBe(401);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   it("requires authentication before touching either database", async () => {
     const { fetchMock } = mockServices();
     expect((await GET(request(""))).status).toBe(401);
@@ -98,7 +146,7 @@ describe("private piano lesson feed", () => {
     const { studioRequests } = mockServices();
     const response = await GET(request());
     expect(response.status).toBe(200);
-    expect(response.headers.get("vary")).toBe("Authorization");
+    expect(response.headers.get("vary")).toBe("Authorization, X-Piano-Key");
     const body = await response.json();
     expect(body).toMatchObject({
       connected: true,

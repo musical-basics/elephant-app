@@ -113,7 +113,7 @@ function readScope(userId: string | null): Scope {
   return scope;
 }
 
-export function useWorkspace(): {
+export function useWorkspace(localOnly = false): {
   state: AppState;
   update: (next: NextState) => void;
   restoreBackup: (data: AppState) => Promise<void>;
@@ -140,7 +140,7 @@ export function useWorkspace(): {
   const actions = useRef<Actions | null>(null);
 
   useEffect(() => {
-    const client = configuration.client;
+    const client = localOnly ? null : configuration.client;
     let active = true;
     let current: Scope | null = null;
     let authVersion = 0;
@@ -482,7 +482,7 @@ export function useWorkspace(): {
       window.removeEventListener('online', onOnline);
       actions.current = null;
     };
-  }, []);
+  }, [localOnly]);
 
   const update = useCallback((next: NextState) => actions.current?.update(next), []);
   const retrySync = useCallback(() => actions.current?.retrySync(), []);
