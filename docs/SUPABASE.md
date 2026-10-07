@@ -32,6 +32,16 @@ A signed-in mobile-browser smoke test passed on the public production domain: a 
 
 This Supabase project also serves another app. Preserve its existing Site URL and redirect entries; append Elephant's production and development redirect URLs instead of replacing those settings. The sign-in redirect carries a whitelisted `design` query parameter so the chosen design survives authentication. Confirm real email delivery before inviting users; integration checks do not send email.
 
+## Piano Studio calendar connection
+
+The production Vercel function `GET /api/piano-lessons` reads the separate Piano Studio Supabase project. Configure `PIANO_STUDIO_SUPABASE_URL`, `PIANO_STUDIO_SERVICE_KEY`, and `PIANO_STUDIO_OWNER_ID` as **server-only** environment variables on Elephant. The owner ID is the connected user's UUID in Elephant's auth project, not the studio's auth project. The function validates the caller's bearer token with Elephant's auth server and requires that exact confirmed account before reading any studio data. Other accounts receive an empty disconnected feed. Missing/expired sessions cannot read lessons. Responses use `private, no-store`.
+
+The connection only selects lesson ID, date, time, duration, status, and student name; it has no write operation. Credentials never enter the browser bundle. Keep the service key out of `VITE_` variables. Revoking the owner ID or service key disables access on the next request. The studio repo and its scheduling/billing behavior are unchanged.
+
+The visible calendar range is loaded on demand with a one-day timezone margin. Only actual `scheduled`/`completed` rows appear; standing slots beyond booked dates are not projected. Studio cancellations delete rows, so each refresh replaces the feed rather than appending copies. Previously loaded lessons remain visible with a stale-data message after a failed refresh; they are removed immediately when the account or range changes. The feed stays in memory and is excluded from workspace persistence/backups and item reminders.
+
+For local integration work, use `vercel dev` with the server environment configured; plain `npm run dev` serves the UI only. Browser tests mock `/api/piano-lessons` and unit tests mock both Supabase projects, without real credentials.
+
 ## Saving behavior and recovery
 
 - Browser edits are cached immediately. Cloud saves are debounced and serialized. Each update includes the revision it loaded; a competing update pauses sync instead of silently replacing the other device's work.

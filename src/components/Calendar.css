@@ -11,6 +11,55 @@
   gap: 30px;
   align-items: start;
 }
+.calendar-studio {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 16px;
+  margin-bottom: 24px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface);
+}
+.calendar-studio > svg {
+  flex-shrink: 0;
+  margin-top: 2px;
+  color: var(--accent);
+}
+.calendar-studio > div {
+  flex: 1;
+  min-width: 0;
+}
+.calendar-studio strong {
+  font-size: 12px;
+  font-weight: 500;
+}
+.theme .calendar-studio p {
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.6;
+  margin-top: 5px;
+}
+.calendar-studio a {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--accent);
+  font-size: 11px;
+  margin-top: 8px;
+}
+.schedule-row.is-lesson .schedule-item-body {
+  border-left-color: var(--accent);
+}
+a.schedule-title {
+  color: var(--ink);
+  text-decoration: none;
+}
+.schedule-lesson-source {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
 .calendar-month {
   background: var(--surface);
   border: 1px solid var(--line);

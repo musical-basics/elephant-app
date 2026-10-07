@@ -123,6 +123,7 @@ export function useWorkspace(): {
   syncStatus: string;
   error: string | null;
   userEmail: string | null;
+  accessToken: string | null;
   configured: boolean;
   signIn: (email: string) => Promise<void>;
   signOut: () => Promise<void>;
@@ -135,6 +136,7 @@ export function useWorkspace(): {
   const [syncStatus, setSyncStatus] = useState('Loading workspace…');
   const [error, setError] = useState<string | null>(configuration.error);
   const [userEmail, setUserEmail] = useState<string | null>(null);
+  const [accessToken, setAccessToken] = useState<string | null>(null);
   const actions = useRef<Actions | null>(null);
 
   useEffect(() => {
@@ -306,6 +308,7 @@ export function useWorkspace(): {
       if (!active) return;
       const userId = session?.user.id || null;
       setUserEmail(session?.user.email || null);
+      setAccessToken(session?.access_token || null);
       if (current && current.userId === userId) return;
       stop(current);
       current = readScope(userId);
@@ -490,5 +493,5 @@ export function useWorkspace(): {
   const signIn = useCallback(async (email: string) => { await actions.current?.signIn(email); }, []);
   const signOut = useCallback(async () => { await actions.current?.signOut(); }, []);
 
-  return { state, update, restoreBackup, recoveryNeeded, ready, mode, syncStatus, error, userEmail, configured: Boolean(configuration.client), signIn, signOut, retrySync };
+  return { state, update, restoreBackup, recoveryNeeded, ready, mode, syncStatus, error, userEmail, accessToken, configured: Boolean(configuration.client), signIn, signOut, retrySync };
 }

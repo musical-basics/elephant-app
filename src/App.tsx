@@ -1088,6 +1088,7 @@ export default function App() {
               {screen === "calendar" && (
                 <Calendar
                   items={state.scheduledItems}
+                  accessToken={workspace.accessToken}
                   now={now}
                   onAdd={(date) => setModal({ kind: "scheduled", date })}
                   onEdit={(item) => setModal({ kind: "scheduled", item })}

@@ -6,17 +6,32 @@ import {
   ChevronLeft,
   ChevronRight,
   Clock3,
+  ExternalLink,
+  Music2,
   Pencil,
   Plus,
   RotateCcw,
+  RefreshCw,
   Trash2,
 } from "lucide-react";
 import { localDateKey } from "../lib/schedule";
 import type { ScheduledItem } from "../lib/schedule";
+import { PIANO_STUDIO_URL } from "../lib/pianoLessons";
+import type { PianoLesson } from "../lib/pianoLessons";
+import { usePianoLessons } from "../lib/usePianoLessons";
 import "./Calendar.css";
+
+type CalendarEntry = ScheduledItem | PianoLesson;
+function isLesson(item: CalendarEntry): item is PianoLesson {
+  return "source" in item && item.source === "piano-studio";
+}
+function isCompleted(item: CalendarEntry): boolean {
+  return isLesson(item) ? item.status === "completed" : !!item.completedAt;
+}
 
 export default function Calendar({
   items,
+  accessToken,
   now,
   onAdd,
   onEdit,
@@ -24,6 +39,7 @@ export default function Calendar({
   onToggle,
 }: {
   items: ScheduledItem[];
+  accessToken: string | null;
   now: number;
   onAdd: (date: string) => void;
   onEdit: (item: ScheduledItem) => void;
@@ -37,7 +53,26 @@ export default function Calendar({
     () => new Date(new Date(now).getFullYear(), new Date(now).getMonth(), 1),
   );
   const today = localDateKey(new Date(now));
-  const ordered = [...items].sort(
+  // Pad the visible grid by a day for Pacific-to-viewer date changes.
+  const first = new Date(
+    month.getFullYear(),
+    month.getMonth(),
+    -month.getDay(),
+  );
+  const last = new Date(
+    month.getFullYear(),
+    month.getMonth(),
+    43 - month.getDay(),
+  );
+  const piano = usePianoLessons(
+    accessToken,
+    localDateKey(first),
+    localDateKey(last),
+  );
+  const ordered: CalendarEntry[] = [
+    ...items,
+    ...(piano.feed?.lessons ?? []),
+  ].sort(
     (a, b) =>
       Date.parse(a.scheduledAt) - Date.parse(b.scheduledAt) ||
       a.id.localeCompare(b.id),
@@ -48,13 +83,13 @@ export default function Calendar({
   const upcoming = ordered
     .filter(
       (item) =>
-        !item.completedAt &&
+        !isCompleted(item) &&
         Date.parse(item.scheduledAt) >= now &&
         localDateKey(new Date(item.scheduledAt)) !== selectedDate,
     )
     .slice(0, 5);
   const counts = new Map<string, number>();
-  for (const item of items) {
+  for (const item of ordered) {
     const key = localDateKey(new Date(item.scheduledAt));
     counts.set(key, (counts.get(key) ?? 0) + 1);
   }
@@ -91,6 +126,45 @@ export default function Calendar({
         A time and a place for what’s coming up. Your scheduled items have their
         own timeline.
       </p>
+      {(!accessToken || piano.feed?.connected !== false) && (
+        <section
+          className="calendar-studio"
+          aria-label="Piano studio connection"
+        >
+          <Music2 size={19} aria-hidden="true" />
+          <div>
+            <strong>Piano studio</strong>
+            <p role="status">
+              {!accessToken
+                ? "Sign in to your connected Elephant account to see your piano lessons."
+                : piano.error
+                  ? `${piano.error}${piano.feed ? " Showing the last loaded schedule." : ""}`
+                  : piano.loading
+                    ? "Refreshing piano lessons…"
+                    : `Booked lessons sync automatically · Updated ${new Date(piano.feed!.fetchedAt).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })}`}
+            </p>
+            {accessToken && piano.feed?.connected && (
+              <a
+                href={PIANO_STUDIO_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                Manage lessons in Piano Studio <ExternalLink size={12} />
+              </a>
+            )}
+          </div>
+          {accessToken && (
+            <button
+              className="icon-button"
+              aria-label="Refresh piano lessons"
+              disabled={piano.loading}
+              onClick={piano.refresh}
+            >
+              <RefreshCw size={17} />
+            </button>
+          )}
+        </section>
+      )}
       <div className="calendar-layout">
         <section className="calendar-month" aria-label="Monthly calendar">
           <div className="calendar-month-heading">
@@ -179,8 +253,8 @@ export default function Calendar({
           <div className="calendar-reminder-note">
             <Bell size={18} />
             <p>
-              A gentle reminder after a completed task, 3 hours and 30 minutes
-              before each item.
+              For items you schedule here: a gentle reminder after a completed
+              task, 3 hours and 30 minutes before each item.
             </p>
           </div>
         </section>
@@ -195,7 +269,7 @@ export default function Calendar({
             <ol className="schedule-list">
               {selectedItems.map((item) => (
                 <li
-                  className={`schedule-row${item.completedAt ? " is-completed" : ""}`}
+                  className={`schedule-row${isCompleted(item) ? " is-completed" : ""}${isLesson(item) ? " is-lesson" : ""}`}
                   key={item.id}
                 >
                   <time dateTime={item.scheduledAt}>
@@ -205,47 +279,73 @@ export default function Calendar({
                     })}
                   </time>
                   <div className="schedule-item-body">
-                    <button
-                      className="schedule-title"
-                      onClick={() => onEdit(item)}
-                    >
-                      {item.title}
-                    </button>
-                    <p>
-                      {item.completedAt
-                        ? "Completed"
-                        : Date.parse(item.scheduledAt) <= now
-                          ? "Scheduled time passed"
-                          : "Scheduled"}
-                    </p>
-                    <div className="schedule-actions">
-                      <button
-                        className="text-button"
-                        aria-label={`${item.completedAt ? "Reopen" : "Complete"} scheduled item ${item.title}`}
-                        onClick={() => onToggle(item)}
-                      >
-                        {item.completedAt ? (
-                          <RotateCcw size={14} />
-                        ) : (
-                          <Check size={14} />
-                        )}
-                        {item.completedAt ? "Reopen" : "Complete"}
-                      </button>
-                      <button
-                        className="icon-button"
-                        aria-label={`Edit scheduled item ${item.title}`}
-                        onClick={() => onEdit(item)}
-                      >
-                        <Pencil size={15} />
-                      </button>
-                      <button
-                        className="icon-button"
-                        aria-label={`Delete scheduled item ${item.title}`}
-                        onClick={() => onDelete(item)}
-                      >
-                        <Trash2 size={15} />
-                      </button>
-                    </div>
+                    {isLesson(item) ? (
+                      <>
+                        <a
+                          className="schedule-title"
+                          href={PIANO_STUDIO_URL}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                        >
+                          {item.title}
+                        </a>
+                        <p>
+                          {item.durationMinutes} min · Ends{" "}
+                          {new Date(item.endsAt).toLocaleTimeString(undefined, {
+                            hour: "numeric",
+                            minute: "2-digit",
+                          })}
+                        </p>
+                        <p className="schedule-lesson-source">
+                          <Music2 size={12} /> Piano Studio ·{" "}
+                          {item.status === "completed" ? "Completed" : "Booked"}
+                        </p>
+                      </>
+                    ) : (
+                      <>
+                        <button
+                          className="schedule-title"
+                          onClick={() => onEdit(item)}
+                        >
+                          {item.title}
+                        </button>
+                        <p>
+                          {item.completedAt
+                            ? "Completed"
+                            : Date.parse(item.scheduledAt) <= now
+                              ? "Scheduled time passed"
+                              : "Scheduled"}
+                        </p>
+                        <div className="schedule-actions">
+                          <button
+                            className="text-button"
+                            aria-label={`${item.completedAt ? "Reopen" : "Complete"} scheduled item ${item.title}`}
+                            onClick={() => onToggle(item)}
+                          >
+                            {item.completedAt ? (
+                              <RotateCcw size={14} />
+                            ) : (
+                              <Check size={14} />
+                            )}
+                            {item.completedAt ? "Reopen" : "Complete"}
+                          </button>
+                          <button
+                            className="icon-button"
+                            aria-label={`Edit scheduled item ${item.title}`}
+                            onClick={() => onEdit(item)}
+                          >
+                            <Pencil size={15} />
+                          </button>
+                          <button
+                            className="icon-button"
+                            aria-label={`Delete scheduled item ${item.title}`}
+                            onClick={() => onDelete(item)}
+                          >
+                            <Trash2 size={15} />
+                          </button>
+                        </div>
+                      </>
+                    )}
                   </div>
                 </li>
               ))}
