@@ -385,6 +385,8 @@ test("private connection also works with no saved Elephant account", async ({
       },
     });
   });
+  await page.goto(`${baseUrl}/#/still/calendar`);
+  await expect(page.getByText("Open your private calendar link to connect piano lessons to this browser. No Elephant sign-in needed.")).toBeVisible();
   await page.goto(`${baseUrl}/#piano-connect=${localKey}`);
   await expect(page.locator(".is-lesson")).toHaveCount(1);
   await page.reload();
