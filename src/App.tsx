@@ -43,6 +43,7 @@ import {
   Trash2,
   Timer,
   Upload,
+  Volume2,
   X,
   Zap,
 } from "lucide-react";
@@ -79,7 +80,10 @@ import {
 import type { AppState, Item, Project } from "./lib/model";
 import { useWorkspace } from "./lib/useWorkspace";
 import { useCountdown } from "./lib/useCountdown";
-import { playCompletionSound } from "./lib/completionSound";
+import {
+  playCompletionSound,
+  preloadCompletionSound,
+} from "./lib/completionSound";
 import { formatElapsedTime } from "./lib/duration";
 import {
   acknowledgeReminder,
@@ -264,6 +268,10 @@ export default function App() {
   const activeProjects = state.projects.filter((p) => p.status === "active");
 
   useEffect(() => {
+    void preloadCompletionSound();
+  }, []);
+
+  useEffect(() => {
     const tick = () => setClockTick((value) => value + 1);
     const timer = window.setInterval(tick, 15_000);
     window.addEventListener("focus", tick);
@@ -380,7 +388,7 @@ export default function App() {
     ) {
       setModal(null);
       setCompletionCelebration(current.item.id);
-      playCompletionSound();
+      void playCompletionSound();
     }
   }
   function finishCurrentItem() {
@@ -1086,14 +1094,16 @@ export default function App() {
                   onDelete={(item) =>
                     setModal({ kind: "deleteScheduled", item })
                   }
-                  onToggle={(item) =>
-                    mutate(
+                  onToggle={(item) => {
+                    const changed = mutate(
                       (s) => toggleScheduledItem(s, item.id),
                       item.completedAt
                         ? "Scheduled item reopened."
                         : "Scheduled item completed.",
-                    )
-                  }
+                    );
+                    if (changed && !item.completedAt)
+                      void playCompletionSound();
+                  }}
                 />
               )}
 
@@ -2057,6 +2067,31 @@ export default function App() {
                       </div>
                     </section>
                     <section className="settings-section">
+                      <h2>A little reward</h2>
+                      <div className="setting-row completion-sound-setting">
+                        <div>
+                          <strong>Completion sound</strong>
+                          <p>
+                            Two warm marimba notes, with a soft, natural finish.
+                          </p>
+                        </div>
+                        <button
+                          className="secondary-button"
+                          onClick={() => {
+                            void playCompletionSound().then((played) => {
+                              if (!played)
+                                setToast(
+                                  "Sound couldn’t play. Check your browser audio settings and try again.",
+                                );
+                            });
+                          }}
+                        >
+                          <Volume2 size={17} />
+                          Preview sound
+                        </button>
+                      </div>
+                    </section>
+                    <section className="settings-section">
                       <h2>
                         <Cloud size={19} />
                         Your workspace
@@ -2639,6 +2674,7 @@ export default function App() {
                       setModal(null);
                       setSelectedItem(null);
                       setToast("Project marked complete.");
+                      void playCompletionSound();
                     } catch (error) {
                       setFormError(
                         error instanceof Error

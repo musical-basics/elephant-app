@@ -1662,6 +1662,15 @@ button {
   font-weight: 500;
   overflow-wrap: anywhere;
 }
+.completion-sound-setting {
+  flex-wrap: wrap;
+}
+.completion-sound-setting > div {
+  flex: 1 1 190px;
+}
+.completion-sound-setting > button {
+  flex-shrink: 0;
+}
 .setting-row p {
   font-size: 11px;
   color: var(--muted);

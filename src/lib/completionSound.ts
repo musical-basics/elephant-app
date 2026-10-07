@@ -1,81 +1,127 @@
+import completionSoundUrl from "../assets/audio/completion-marimba.mp3";
+
 let completionContext: AudioContext | undefined;
+let soundBytes: Promise<ArrayBuffer | null> | undefined;
+let decoding: Promise<AudioBuffer | null> | undefined;
+let decodedSound: AudioBuffer | undefined;
+let latestRequest = 0;
+let activeVoice: { source: AudioBufferSourceNode; gain: GainNode } | undefined;
 
-function playChime(context: AudioContext): void {
-  const voices: { oscillator: OscillatorNode; envelope: GainNode }[] = [];
+/** Download silently in advance; do not create an audio device or play on load. */
+export function preloadCompletionSound(): Promise<ArrayBuffer | null> {
+  if (!soundBytes) {
+    soundBytes = fetch(completionSoundUrl)
+      .then((response) => {
+        if (!response.ok) throw new Error("Completion sound unavailable.");
+        return response.arrayBuffer();
+      })
+      .catch(() => {
+        soundBytes = undefined;
+        return null;
+      });
+  }
+  return soundBytes;
+}
 
+function decodeSound(context: AudioContext): Promise<AudioBuffer | null> {
+  if (!decoding) {
+    decoding = preloadCompletionSound()
+      .then((bytes) => (bytes ? context.decodeAudioData(bytes.slice(0)) : null))
+      .then((buffer) => {
+        if (completionContext === context) {
+          decodedSound = buffer ?? undefined;
+          if (!buffer) decoding = undefined;
+        }
+        return buffer;
+      })
+      .catch(() => {
+        if (completionContext === context) {
+          decoding = undefined;
+          soundBytes = undefined;
+        }
+        return null;
+      });
+  }
+  return decoding;
+}
+
+function playSample(context: AudioContext, buffer: AudioBuffer): boolean {
+  let source: AudioBufferSourceNode | undefined;
+  let gain: GainNode | undefined;
   try {
-    const start = context.currentTime + 0.01;
-    // A quiet C-major arpeggio with soft attacks and a short bell-like decay.
-    [523.25, 659.25, 783.99].forEach((frequency, index) => {
-      const oscillator = context.createOscillator();
-      const envelope = context.createGain();
-      voices.push({ oscillator, envelope });
-      const noteStart = start + index * 0.11;
-
-      oscillator.type = "sine";
-      oscillator.frequency.setValueAtTime(frequency, noteStart);
-      envelope.gain.setValueAtTime(0, noteStart);
-      envelope.gain.linearRampToValueAtTime(0.055, noteStart + 0.012);
-      envelope.gain.exponentialRampToValueAtTime(0.0001, noteStart + 0.46);
-      envelope.gain.linearRampToValueAtTime(0, noteStart + 0.48);
-      oscillator.connect(envelope);
-      envelope.connect(context.destination);
-      oscillator.onended = () => {
-        oscillator.disconnect();
-        envelope.disconnect();
-      };
-      oscillator.start(noteStart);
-      oscillator.stop(noteStart + 0.49);
-    });
-  } catch {
-    // Sound is optional: an unavailable audio device must never block saving.
-    for (const { oscillator, envelope } of voices) {
-      try {
-        oscillator.stop();
-      } catch {
-        // A source that has not started cannot be stopped.
-      }
-      oscillator.disconnect();
-      envelope.disconnect();
+    const start = context.currentTime;
+    // Fast completions replace the previous tail with a short, click-free fade.
+    // They must not accumulate into an increasingly loud chord.
+    if (activeVoice) {
+      const previous = activeVoice;
+      previous.gain.gain.cancelScheduledValues(start);
+      previous.gain.gain.setValueAtTime(previous.gain.gain.value, start);
+      previous.gain.gain.linearRampToValueAtTime(0, start + 0.025);
+      previous.source.stop(start + 0.03);
     }
+
+    source = context.createBufferSource();
+    gain = context.createGain();
+    const voice = { source, gain };
+    source.buffer = buffer;
+    gain.gain.setValueAtTime(0.85, start);
+    source.connect(gain);
+    gain.connect(context.destination);
+    source.onended = () => {
+      voice.source.disconnect();
+      voice.gain.disconnect();
+      if (activeVoice === voice) activeVoice = undefined;
+    };
+    source.start(start);
+    activeVoice = voice;
+    return true;
+  } catch {
+    source?.disconnect();
+    gain?.disconnect();
+    return false;
   }
 }
 
-/** Call directly in a completion click handler so the browser can allow audio. */
-export function playCompletionSound(): void {
+/** Call from the completion/preview click so browser audio permission is local. */
+export async function playCompletionSound(): Promise<boolean> {
+  const request = ++latestRequest;
+  const requestedAt = performance.now();
   try {
-    if (typeof window === "undefined") return;
+    if (typeof window === "undefined") return false;
     const AudioContextConstructor =
       window.AudioContext ??
       (window as Window & { webkitAudioContext?: typeof AudioContext })
         .webkitAudioContext;
-    if (!AudioContextConstructor) return;
+    if (!AudioContextConstructor) return false;
 
     if (!completionContext || completionContext.state === "closed") {
-      completionContext = new AudioContextConstructor();
+      completionContext = new AudioContextConstructor({
+        latencyHint: "interactive",
+      });
+      decoding = undefined;
+      decodedSound = undefined;
+      activeVoice = undefined;
     }
     const context = completionContext;
-    if (context.state === "running") {
-      playChime(context);
-      return;
+    if (context.state === "running" && decodedSound) {
+      return playSample(context, decodedSound);
     }
 
-    const requestedAt = performance.now();
-    void context
-      .resume()
-      .then(() => {
-        // Don't play an old celebration if browser permission was delayed.
-        if (
-          context.state === "running" &&
-          performance.now() - requestedAt < 1000
-        ) {
-          playChime(context);
-        }
-      })
-      .catch(() => {
-        // Muted or blocked audio leaves the visual celebration fully usable.
-      });
+    // Resume during the gesture, before awaiting a download or decoder.
+    const resumed =
+      context.state === "running" ? Promise.resolve() : context.resume();
+    const [buffer] = await Promise.all([decodeSound(context), resumed]);
+    if (
+      !buffer ||
+      context.state !== "running" ||
+      request !== latestRequest ||
+      performance.now() - requestedAt >= 750
+    ) {
+      return false;
+    }
+    return playSample(context, buffer);
   } catch {
-    // Some browsers reject creating or resuming an audio context entirely.
+    // Optional feedback must never block completion, including on muted devices.
+    return false;
   }
 }
