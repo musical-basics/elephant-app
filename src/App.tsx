@@ -21,6 +21,7 @@ import {
   Circle,
   CircleCheck,
   Cloud,
+  ClipboardList,
   Copy,
   Download,
   Folder,
@@ -51,6 +52,8 @@ import DesignGallery from "./components/DesignGallery";
 import CompletionCelebration from "./components/CompletionCelebration";
 import ProjectSearch from "./components/ProjectSearch";
 import Analytics from "./components/Analytics";
+import ActivityLog from "./components/ActivityLog";
+import { saveLogEntry, removeLogEntry } from "./lib/activityLog";
 import FocusTimer from "./components/FocusTimer";
 import Calendar from "./components/Calendar";
 import ScheduledItemSheet from "./components/ScheduledItemSheet";
@@ -105,6 +108,7 @@ type Screen =
   | "completed"
   | "analytics"
   | "calendar"
+  | "log"
   | "settings"
   | "queue";
 type Route = { design: DesignId | null; screen: Screen; projectId?: string };
@@ -152,6 +156,7 @@ function readRoute(): Route {
       "completed",
       "analytics",
       "calendar",
+      "log",
       "settings",
       "queue",
     ].includes(screen)
@@ -540,6 +545,7 @@ export default function App({
     { screen: "focus", label: "Do now", icon: <Circle size={20} /> },
     { screen: "projects-home", label: "Projects", icon: <Layers size={20} /> },
     { screen: "calendar", label: "Calendar", icon: <CalendarDays size={20} /> },
+    { screen: "log", label: "Log", icon: <ClipboardList size={20} /> },
     {
       screen: "completed",
       label: "Completed",
@@ -1891,6 +1897,18 @@ export default function App({
                 </>
               )}
 
+              {screen === "log" && (
+                <ActivityLog
+                  state={state}
+                  onSave={(draft, id) =>
+                    update((current) => saveLogEntry(current, draft, id))
+                  }
+                  onDelete={(id) =>
+                    update((current) => removeLogEntry(current, id))
+                  }
+                />
+              )}
+
               {screen === "queue" && (
                 <>
                   <PageHeading
@@ -2384,7 +2402,8 @@ export default function App({
                       <div>
                         <h2>A fresh start</h2>
                         <p>
-                          Clear all items, projects, and completion history.
+                          Clear all items, projects, completion history, and
+                          logged activities.
                         </p>
                       </div>
                       <button
@@ -2498,9 +2517,9 @@ export default function App({
                   : modal.kind === "project"
                     ? "Give your project a name. We’ll take it one step at a time."
                     : modal.kind === "import"
-                      ? `This backup has ${modal.data.projects.length} projects, ${modal.data.items.length} items, and ${modal.data.scheduledItems.length} scheduled items. It will replace all current workspace data.`
+                      ? `This backup has ${modal.data.projects.length} projects, ${modal.data.items.length} items, ${modal.data.scheduledItems.length} scheduled items, and ${modal.data.activityLog?.length ?? 0} logged activities. It will replace all current workspace data.`
                       : modal.kind === "reset"
-                        ? "This deletes all items, projects, and history in this workspace. Export a backup first if you want to keep them."
+                        ? "This deletes all items, projects, logged activities, and history in this workspace. Export a backup first if you want to keep them."
                         : modal.kind === "delete"
                           ? modal.item.completedAt
                             ? "This permanently removes the item from your completed history. This can’t be undone."
@@ -2868,6 +2887,7 @@ export default function App({
                   const empty = createEmptyState();
                   update({
                     ...empty,
+                    activityLog: [],
                     profile: state.profile,
                     settings: state.settings,
                   });
@@ -2902,7 +2922,10 @@ export default function App({
                     setRestoring(true);
                     setFormError("");
                     try {
-                      await workspace.restoreBackup(modal.data);
+                      await workspace.restoreBackup({
+                        ...modal.data,
+                        activityLog: modal.data.activityLog ?? [],
+                      });
                       setModal(null);
                       navigate("home");
                       setToast("Your workspace has been restored.");

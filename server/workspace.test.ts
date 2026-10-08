@@ -75,7 +75,7 @@ it("passes an explicit expected revision and ignores client-supplied workspace I
       expect(String(input)).toContain("/rpc/elephant_save_desktop");
       expect(JSON.parse(init.body)).toEqual({
         p_workspace_id: "desktop",
-        p_data: createEmptyState(),
+        p_data: { ...createEmptyState(), activityLog: [] },
         p_expected_revision: 4,
       });
       return Response.json({ revision: 5 });
@@ -83,7 +83,7 @@ it("passes an explicit expected revision and ignores client-supplied workspace I
   );
   const response = await PUT(
     request({
-      data: createEmptyState(),
+      data: { ...createEmptyState(), activityLog: [] },
       expectedRevision: 4,
       workspaceId: "someone-else",
     }),
@@ -130,4 +130,50 @@ it("fails closed without configuration and hides upstream secrets on errors", as
   );
   expect(response.status).toBe(502);
   expect(await response.text()).not.toContain("private-server-key");
+});
+
+it.each([false, true])(
+  "preserves logs from older tabs while retaining revision protection (conflict: %s)",
+  async (conflict) => {
+    const activityLog = [
+      {
+        id: "log",
+        title: "Sleep",
+        category: "sleep",
+        startedAt: "2026-10-08T00:00:00.000Z",
+        endedAt: "2026-10-08T08:00:00.000Z",
+        createdAt: "2026-10-08T08:00:00.000Z",
+      },
+    ];
+    const fetchMock = vi.fn(async (input, init) => {
+      if (String(input).endsWith("/elephant_read_desktop"))
+        return Response.json({
+          data: { ...createEmptyState(), activityLog },
+          revision: 4,
+        });
+      expect(JSON.parse(init.body)).toMatchObject({
+        p_data: { activityLog },
+        p_expected_revision: 4,
+      });
+      return Response.json(conflict ? null : { revision: 5 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    expect(
+      (await PUT(request({ data: createEmptyState(), expectedRevision: 4 })))
+        .status,
+    ).toBe(conflict ? 409 : 200);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  },
+);
+
+it("does not overwrite Supabase when preserving an older tab’s logs fails", async () => {
+  const fetchMock = vi.fn(async () =>
+    Response.json({ message: "Offline" }, { status: 503 }),
+  );
+  vi.stubGlobal("fetch", fetchMock);
+  expect(
+    (await PUT(request({ data: createEmptyState(), expectedRevision: 4 })))
+      .status,
+  ).toBe(502);
+  expect(fetchMock).toHaveBeenCalledTimes(1);
 });

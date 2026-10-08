@@ -1,5 +1,7 @@
 import { acknowledgeReminder, getActiveReminder, presentReminder } from './schedule.js';
 import type { ScheduledItem, ScheduledReminder } from './schedule';
+import { LOG_CATEGORIES, logCompletedTask } from './activityLog.js';
+import type { LogEntry, LogCategory } from './activityLog';
 
 export type ProjectStatus = 'active' | 'inactive' | 'completed';
 
@@ -37,6 +39,7 @@ export interface AppState {
   queue: QueueSlot[];
   scheduledItems: ScheduledItem[];
   activeReminder: ScheduledReminder | null;
+  activityLog?: LogEntry[];
 }
 
 export interface ResolvedQueueEntry {
@@ -295,7 +298,8 @@ export function completeCurrent(state: AppState, timeSpentSeconds?: number): App
     return completed;
   });
   // A project stays open until the user explicitly marks the project complete.
-  return presentReminder(reprocess({ ...state, items, queue: state.queue.filter((slot) => slot.id !== current.slot.id) }));
+  const activityLog = [...(state.activityLog ?? []), logCompletedTask(state, current.item, timestamp, timeSpentSeconds)];
+  return presentReminder(reprocess({ ...state, items, activityLog, queue: state.queue.filter((slot) => slot.id !== current.slot.id) }));
 }
 
 /** Restore the original completed item to the front without reprocessing others. */
@@ -500,7 +504,19 @@ export function validateImport(input: unknown): AppState {
     if (unfinished.some((item) => item.isPlaceholder) && unfinished.length !== 1) throw new Error('Invalid backup: a project placeholder must be its only unfinished item.');
   }
   const avatarUrl = profile.avatarUrl === undefined ? undefined : inlineAvatar(profile.avatarUrl);
-  const state: AppState = { version: 1, profile: { name: string(profile.name, 'profile name', true), ...(avatarUrl ? { avatarUrl } : {}) }, settings: { showMasterList: settings.showMasterList }, projects, items, queue, scheduledItems, activeReminder };
+  const activityLog = data.activityLog === undefined ? undefined : array(data.activityLog, 'activity log').map((value): LogEntry => {
+    const entry = record(value, 'log entry');
+    if (!LOG_CATEGORIES.includes(entry.category as LogCategory)) throw new Error('Invalid backup: unknown log category.');
+    const startedAt = nullableTimestamp(entry.startedAt, 'log start');
+    const endedAt = timestamp(entry.endedAt, 'log end');
+    if (startedAt !== null && Date.parse(startedAt) > Date.parse(endedAt)) throw new Error('Invalid backup: log end precedes start.');
+    if (entry.inferred !== undefined && typeof entry.inferred !== 'boolean') throw new Error('Invalid backup: log inference flag must be boolean.');
+    const title = string(entry.title, 'log title');
+    if (title.length > 500) throw new Error('Invalid backup: log title is too long.');
+    return { id: string(entry.id, 'log ID'), title, category: entry.category as LogCategory, startedAt, endedAt, createdAt: timestamp(entry.createdAt, 'log createdAt'), ...(entry.taskId === undefined ? {} : { taskId: string(entry.taskId, 'log task ID') }), ...(entry.scheduledItemId === undefined ? {} : { scheduledItemId: string(entry.scheduledItemId, 'log scheduled item ID') }), ...(entry.inferred === undefined ? {} : { inferred: entry.inferred }) };
+  });
+  if (activityLog) unique(activityLog, 'log entry');
+  const state: AppState = { version: 1, profile: { name: string(profile.name, 'profile name', true), ...(avatarUrl ? { avatarUrl } : {}) }, settings: { showMasterList: settings.showMasterList }, projects, items, queue, scheduledItems, activeReminder, ...(activityLog === undefined ? {} : { activityLog }) };
   const resolved = resolveQueue(state);
   if (resolved.length !== queue.length) throw new Error('Invalid backup: queue contains a missing, inactive, duplicate, completed, or excess task.');
   const queuedErrands = new Set(queue.flatMap((slot) => slot.kind === 'errand' ? [slot.itemId] : []));

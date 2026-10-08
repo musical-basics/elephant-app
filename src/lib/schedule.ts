@@ -1,4 +1,5 @@
 import type { AppState } from "./model";
+import { logCompletedTask } from "./activityLog.js";
 
 export type ReminderOffset = 180 | 30;
 export interface ScheduledItem {
@@ -146,13 +147,24 @@ export function deleteScheduledItem(state: AppState, itemId: string): AppState {
 }
 
 export function toggleScheduledItem(state: AppState, itemId: string): AppState {
+  const item = state.scheduledItems.find((entry) => entry.id === itemId);
+  if (!item) return state;
+  const timestamp = new Date().toISOString();
+  const log = !item.completedAt
+    ? logCompletedTask(state, item, timestamp)
+    : null;
+  if (log) {
+    delete log.taskId;
+    log.scheduledItemId = item.id;
+  }
   return {
     ...state,
+    ...(log ? { activityLog: [...(state.activityLog ?? []), log] } : {}),
     scheduledItems: state.scheduledItems.map((item) =>
       item.id === itemId
         ? {
             ...item,
-            completedAt: item.completedAt ? null : new Date().toISOString(),
+            completedAt: item.completedAt ? null : timestamp,
           }
         : item,
     ),

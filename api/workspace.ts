@@ -1,6 +1,7 @@
 import { createHash, timingSafeEqual } from "node:crypto";
 import { createClient } from "@supabase/supabase-js";
 import { validateImport } from "../src/lib/model.js";
+import type { AppState } from "../src/lib/model.js";
 
 function json(body: unknown, status = 200) {
   return Response.json(body, {
@@ -66,7 +67,7 @@ export async function GET(request: Request) {
 export async function PUT(request: Request) {
   const client = connect(request);
   if (client instanceof Response) return client;
-  let body;
+  let body: { data: AppState; expectedRevision: number | null };
   try {
     const raw = await request.text();
     if (Buffer.byteLength(raw, "utf8") > 4 * 1024 * 1024)
@@ -77,7 +78,7 @@ export async function PUT(request: Request) {
         },
         413,
       );
-    body = JSON.parse(raw) as { data: unknown; expectedRevision: unknown };
+    body = JSON.parse(raw);
     if (
       !body ||
       (body.expectedRevision !== null &&
@@ -90,6 +91,20 @@ export async function PUT(request: Request) {
     return json({ error: "The workspace is invalid; nothing was saved." }, 400);
   }
   try {
+    // Older open tabs do not know about activityLog. Preserve that field while
+    // retaining the caller's revision so a concurrent write still conflicts.
+    if (body.data.activityLog === undefined && body.expectedRevision !== null) {
+      const current = await client.rpc("elephant_read_desktop", {
+        p_workspace_id: process.env.ELEPHANT_WORKSPACE_ID || "desktop",
+      });
+      if (current.error) throw current.error;
+      if (current.data?.data?.activityLog !== undefined) {
+        body.data = validateImport({
+          ...body.data,
+          activityLog: current.data.data.activityLog,
+        });
+      }
+    }
     const { data, error } = await client.rpc("elephant_save_desktop", {
       p_workspace_id: process.env.ELEPHANT_WORKSPACE_ID || "desktop",
       p_data: body.data,
