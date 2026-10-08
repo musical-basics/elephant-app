@@ -16,6 +16,14 @@ Use the same private link key and hash as the Piano Studio connection below. Ope
 
 Before replacing a legacy cache, the app preserves its raw value at `elephant.workspace.local.v1.before-supabase.<id>`. It loads the server revision before uploading, and refuses to overwrite a different existing cloud copy. Empty new browsers do not upload sample data. The original database revision and the latest 50 saves are retained in `elephant.workspace_revisions`. Browser storage remains an immediate cache for pending edits; **Saved to Supabase** confirms the server save. Desktop sync refreshes every 30 seconds while visible, on focus/online, and through **Retry sync**.
 
+## Connecting another device
+
+On a connected device, **Settings → Connect another device** generates a QR code entirely in the browser and offers a private link in the form `https://elephant-app-gold.vercel.app/#workspace-connect=KEY`. Scan it with the phone’s camera or paste it into **Connect existing workspace** on the unconnected device. The public gallery and unconnected local workspace display this option; opening the ordinary website URL alone does not authorize access to a private workspace.
+
+The connection screen runs separately from the workspace hook. It removes the credential fragment immediately, verifies the key and remote workspace through a read-only request, preserves any existing local cache byte for byte at `elephant.workspace.local.v1.before-connect.<id>`, then installs the verified cloud snapshot and revision with `dirty: false`. It never uploads a mobile demo cache or creates a new account workspace. An invalid link, missing server workspace, unreadable cloud data, concurrent local edit, or inability to preserve the previous copy stops the connection. Reopening a link on an already connected device keeps that device’s pending edits. Account caches remain separate and untouched. The existing `#piano-connect` link is also accepted when pasted into the connection form; the original automatic desktop migration entry point is retained for compatibility.
+
+The private link is an access credential. Keep it out of source, public pages, telemetry, and backups. The QR is generated locally without sending it to a QR service. Once connected, the phone uses the same private desktop APIs and normal revision-checked saving. Email sign-in is unnecessary for this workspace.
+
 ## Optional account workspaces
 
 1. Choose or create the Supabase project that should own Elephant data.

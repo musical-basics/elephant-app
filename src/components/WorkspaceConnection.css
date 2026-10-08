@@ -1,0 +1,95 @@
+.connect-device-button {
+  margin-top: 16px;
+}
+.device-link {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 18px;
+}
+.workspace-qr {
+  width: min(100%, 288px);
+  height: auto;
+  align-self: center;
+  border-radius: 12px;
+  background: white;
+}
+.device-link label,
+.workspace-connect-card label {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: 12px;
+  min-width: 0;
+}
+.device-link input,
+.workspace-connect-card input {
+  width: 100%;
+  min-width: 0;
+  min-height: 44px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--ink);
+  background: var(--bg);
+  font-size: 16px;
+}
+.workspace-connect-page {
+  min-height: 100dvh;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+}
+.workspace-connect-card {
+  width: 100%;
+  max-width: 480px;
+  padding: 32px;
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  background: var(--surface);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 20px;
+}
+.workspace-connect-card h1 {
+  font-size: 34px;
+}
+.workspace-connect-card p {
+  line-height: 1.7;
+}
+.workspace-connect-card form {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.workspace-connection-banner {
+  padding: 14px 24px;
+  background: var(--soft);
+  color: var(--ink);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 20px;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid var(--line);
+  font-size: 12px;
+  line-height: 1.6;
+}
+.workspace-connection-banner a {
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+@media (max-width: 600px) {
+  .workspace-connect-page {
+    padding: 16px;
+  }
+  .workspace-connect-card {
+    padding: 24px;
+  }
+  .workspace-connect-card h1 {
+    font-size: 28px;
+  }
+}

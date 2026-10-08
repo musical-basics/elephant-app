@@ -53,6 +53,7 @@ import CompletionCelebration from "./components/CompletionCelebration";
 import ProjectSearch from "./components/ProjectSearch";
 import Analytics from "./components/Analytics";
 import ActivityLog from "./components/ActivityLog";
+import { ConnectAnotherDevice } from "./components/WorkspaceConnection";
 import { saveLogEntry, removeLogEntry } from "./lib/activityLog";
 import FocusTimer from "./components/FocusTimer";
 import Calendar from "./components/Calendar";
@@ -690,6 +691,15 @@ export default function App({
               </button>
             </div>
           </header>
+          {workspace.ready && !localPiano.key && !workspace.userEmail && (
+            <div className="workspace-connection-banner">
+              <span>
+                This browser is using a local workspace. Your other devices’
+                data isn’t connected.
+              </span>
+              <a href="#/connect">Connect existing workspace</a>
+            </div>
+          )}
           {workspace.error && (
             <div className="sync-warning" role="status">
               <Cloud size={17} />
@@ -2193,6 +2203,15 @@ export default function App({
                           {workspace.error}
                         </p>
                       )}
+                      {!localPiano.key && (
+                        <p className="small local-explanation">
+                          Already using Elephant on another device?{" "}
+                          <a className="text-button" href="#/connect">
+                            Connect existing workspace
+                          </a>{" "}
+                          to open the same tasks, calendar, and logs here.
+                        </p>
+                      )}
                       {localPiano.key ? (
                         <>
                           <p className="small local-explanation">
@@ -2200,6 +2219,9 @@ export default function App({
                             Supabase. This browser keeps a local copy. No
                             Elephant sign-in is needed.
                           </p>
+                          <ConnectAnotherDevice
+                            connectionKey={localPiano.key}
+                          />
                           <button
                             className="text-button"
                             onClick={workspace.retrySync}

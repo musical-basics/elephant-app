@@ -480,6 +480,10 @@ export default function DesignGallery({
           DESIGN COLLECTION <span>01 — 05</span>
         </span>
       </header>
+      <div className="gallery-connect">
+        <span>Already using Elephant on another device?</span>
+        <a href="#/connect">Connect your existing workspace</a>
+      </div>
       <section className="gallery-hero" aria-labelledby="gallery-title">
         <div className="gallery-hero-copy">
           <div className="gallery-kicker">

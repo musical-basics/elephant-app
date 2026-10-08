@@ -1911,3 +1911,20 @@
     transform: none;
   }
 }
+
+.gallery-connect {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 20px;
+  justify-content: center;
+  padding: 18px 24px;
+  font-size: 13px;
+  line-height: 1.6;
+  background: #eeefe7;
+  color: #344b3d;
+}
+.gallery-connect a {
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
