@@ -24,11 +24,8 @@ export default function Sheet({
       ref={ref}
       className="sheet"
       onCancel={(event) => {
+        // Keep drafts open until the user chooses a dialog action.
         event.preventDefault();
-        onClose();
-      }}
-      onClick={(e) => {
-        if (e.target === e.currentTarget) onClose();
       }}
       aria-labelledby="sheet-title"
       aria-describedby={description ? "sheet-description" : undefined}

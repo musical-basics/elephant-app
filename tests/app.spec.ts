@@ -634,7 +634,7 @@ test("a downloaded JSON backup restores a corrupted browser workspace", async ({
   ).toEqual(original);
 });
 
-test("320px project/settings screens fit and dialogs support Escape", async ({
+test("320px project/settings screens fit and dialog drafts require an explicit action", async ({
   page,
 }) => {
   await page.setViewportSize({ width: 320, height: 740 });
@@ -653,7 +653,20 @@ test("320px project/settings screens fit and dialogs support Escape", async ({
   await page.goto("/#/pop/projects");
   await page.getByRole("button", { name: "Add project", exact: true }).click();
   await expect(page.getByRole("dialog")).toBeVisible();
+  await page
+    .getByLabel("Project name", { exact: true })
+    .fill("Keep this draft");
+  await page.mouse.click(5, 5);
+  await expect(page.getByRole("dialog")).toBeVisible();
+  await expect(page.getByLabel("Project name", { exact: true })).toHaveValue(
+    "Keep this draft",
+  );
   await page.keyboard.press("Escape");
+  await expect(page.getByRole("dialog")).toBeVisible();
+  await expect(page.getByLabel("Project name", { exact: true })).toHaveValue(
+    "Keep this draft",
+  );
+  await page.getByRole("button", { name: "Close dialog", exact: true }).click();
   await expect(page.getByRole("dialog")).toHaveCount(0);
 });
 

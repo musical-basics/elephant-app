@@ -55,6 +55,13 @@ test("scheduled items stay on the calendar through edits, completion, reopening,
     .click();
   await page.getByLabel("Scheduled item name").fill("Annual checkup");
   await page.getByLabel("Time", { exact: true }).fill("16:30");
+  await page.mouse.click(5, 5);
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("dialog")).toBeVisible();
+  await expect(page.getByLabel("Scheduled item name")).toHaveValue(
+    "Annual checkup",
+  );
+  await expect(page.getByLabel("Time", { exact: true })).toHaveValue("16:30");
   await page.getByRole("button", { name: "Save changes", exact: true }).click();
   await expect(page.locator(".schedule-row time")).toHaveText("4:30 PM");
   await page
