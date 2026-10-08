@@ -201,8 +201,12 @@ function downloadFile(content: string, name: string, type: string) {
   window.setTimeout(() => URL.revokeObjectURL(url), 30_000);
 }
 
-export default function App({ localPiano }: { localPiano: LocalPianoConnection }) {
-  const workspace = useWorkspace(localPiano.preferLocal);
+export default function App({
+  localPiano,
+}: {
+  localPiano: LocalPianoConnection;
+}) {
+  const workspace = useWorkspace(localPiano.key);
   const { state, update } = workspace;
   const [route, setRoute] = useState<Route>(readRoute);
   const [modal, setModal] = useState<Modal | null>(null);
@@ -249,7 +253,9 @@ export default function App({ localPiano }: { localPiano: LocalPianoConnection }
   const current = queue[0];
   const now = Date.now();
   const reminder = getActiveReminder(state, now);
-  const timerScope = `${workspace.mode}:${workspace.userEmail ?? "local"}`;
+  const timerScope = localPiano.key
+    ? "local:local"
+    : `${workspace.mode}:${workspace.userEmail ?? "local"}`;
   const countdown = useCountdown({
     itemId:
       reminder || current?.item.isPlaceholder
@@ -597,9 +603,11 @@ export default function App({ localPiano }: { localPiano: LocalPianoConnection }
               <div>
                 <strong>{state.profile.name || "Your space"}</strong>
                 <small>
-                  {workspace.mode === "cloud"
-                    ? "Your personal space"
-                    : "Saved on this device"}
+                  {localPiano.key
+                    ? workspace.syncStatus
+                    : workspace.mode === "cloud"
+                      ? "Your personal space"
+                      : "Saved on this device"}
                 </small>
               </div>
             </div>
@@ -622,9 +630,11 @@ export default function App({ localPiano }: { localPiano: LocalPianoConnection }
             <div className="header-actions">
               <span className="local-badge">
                 <span />
-                {workspace.mode === "cloud"
-                  ? "Personal space"
-                  : "Local workspace"}
+                {localPiano.key
+                  ? "Supabase workspace"
+                  : workspace.mode === "cloud"
+                    ? "Personal space"
+                    : "Local workspace"}
               </span>
               <button
                 className="icon-button mobile-settings"
@@ -2105,12 +2115,20 @@ export default function App({ localPiano }: { localPiano: LocalPianoConnection }
                           {workspace.error}
                         </p>
                       )}
-                      {localPiano.preferLocal ? (
-                        <p className="small local-explanation">
-                          Your items and projects are saved in this browser.
-                          Piano lessons connect directly to this workspace—no
-                          Elephant sign-in is needed.
-                        </p>
+                      {localPiano.key ? (
+                        <>
+                          <p className="small local-explanation">
+                            Your existing workspace saves automatically to
+                            Supabase. This browser keeps a local copy. No
+                            Elephant sign-in is needed.
+                          </p>
+                          <button
+                            className="text-button"
+                            onClick={workspace.retrySync}
+                          >
+                            <RotateCcw size={15} /> Retry sync
+                          </button>
+                        </>
                       ) : workspace.userEmail ? (
                         <>
                           <div className="setting-row">

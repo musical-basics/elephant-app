@@ -239,11 +239,25 @@ test("other accounts see only their own calendar", async ({ page }) => {
   ).toHaveCount(0);
 });
 
+async function desktopStorage(page: Page, key: string) {
+  let workspace: { data: unknown; revision: number } | null = null;
+  await page.route("**/api/workspace", async (route) => {
+    expect(route.request().headers()["x-elephant-key"]).toBe(key);
+    if (route.request().method() === "GET")
+      return route.fulfill({ json: { workspace } });
+    const body = route.request().postDataJSON();
+    expect(body.expectedRevision).toBe(workspace?.revision ?? null);
+    workspace = { data: body.data, revision: (workspace?.revision ?? 0) + 1 };
+    return route.fulfill({ json: { revision: workspace.revision } });
+  });
+}
+
 test("private connection opens the existing desktop workspace despite a saved cloud sign-in, and survives reload", async ({
   page,
 }) => {
   await setup(page);
   const localKey = "a".repeat(43);
+  await desktopStorage(page, localKey);
   const state = {
     version: 1,
     profile: { name: "Desktop Owner" },
@@ -326,6 +340,9 @@ test("private connection opens the existing desktop workspace despite a saved cl
     "Desktop appointment",
     lesson.title,
   ]);
+  await expect(
+    page.getByText("Saved to Supabase", { exact: true }),
+  ).toHaveCount(1);
   await page.reload();
   await expect(page.locator(".schedule-title")).toHaveText([
     "Desktop appointment",
@@ -340,7 +357,7 @@ test("private connection opens the existing desktop workspace despite a saved cl
   ).toBeVisible();
   await page.goto(`${baseUrl}/#/still/settings`);
   await expect(
-    page.getByText(/Piano lessons connect directly to this workspace/),
+    page.getByText(/Your existing workspace saves automatically to Supabase/),
   ).toBeVisible();
   await expect(
     page.getByRole("button", { name: "Send sign-in link" }),
@@ -369,6 +386,7 @@ test("private connection also works with no saved Elephant account", async ({
 }) => {
   await page.clock.install({ time: new Date("2026-10-07T16:00:00Z") });
   const localKey = "b".repeat(43);
+  await desktopStorage(page, localKey);
   let authRequests = 0;
   await page.route(`${authUrl}/**`, async (route) => {
     authRequests++;
@@ -386,7 +404,11 @@ test("private connection also works with no saved Elephant account", async ({
     });
   });
   await page.goto(`${baseUrl}/#/still/calendar`);
-  await expect(page.getByText("Open your private calendar link to connect piano lessons to this browser. No Elephant sign-in needed.")).toBeVisible();
+  await expect(
+    page.getByText(
+      "Open your private calendar link to connect piano lessons to this browser. No Elephant sign-in needed.",
+    ),
+  ).toBeVisible();
   await page.goto(`${baseUrl}/#piano-connect=${localKey}`);
   await expect(page.locator(".is-lesson")).toHaveCount(1);
   await page.reload();

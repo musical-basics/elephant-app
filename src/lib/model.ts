@@ -1,4 +1,4 @@
-import { acknowledgeReminder, getActiveReminder, presentReminder } from './schedule';
+import { acknowledgeReminder, getActiveReminder, presentReminder } from './schedule.js';
 import type { ScheduledItem, ScheduledReminder } from './schedule';
 
 export type ProjectStatus = 'active' | 'inactive' | 'completed';

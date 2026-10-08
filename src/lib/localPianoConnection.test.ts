@@ -4,7 +4,7 @@ import { prepareLocalPianoConnection } from "./localPianoConnection";
 const key = "a".repeat(43);
 afterEach(() => vi.unstubAllGlobals());
 
-it("keeps local mode even when the browser cannot save the private connection", () => {
+it("keeps the desktop connection even when the browser cannot save its key", () => {
   const replaceState = vi.fn();
   vi.stubGlobal("window", {
     location: { hash: `#piano-connect=${key}`, pathname: "/", search: "" },
@@ -17,7 +17,6 @@ it("keeps local mode even when the browser cannot save the private connection", 
   });
   expect(prepareLocalPianoConnection()).toEqual({
     key,
-    preferLocal: true,
     storageError: true,
   });
   expect(replaceState).toHaveBeenCalledWith(null, "", "/#/still/calendar");
@@ -32,7 +31,6 @@ it("invalid links cannot grant access or switch workspaces", () => {
   vi.stubGlobal("localStorage", { setItem, getItem: () => null });
   expect(prepareLocalPianoConnection()).toEqual({
     key: null,
-    preferLocal: false,
     storageError: false,
   });
   expect(setItem).not.toHaveBeenCalled();

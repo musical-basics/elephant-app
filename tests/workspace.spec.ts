@@ -30,7 +30,7 @@ const legacyEmptyProjectState = (): AppState => ({
 
 // Render the real hook without depending on the visual app's controls. All cloud
 // traffic is intercepted; these tests never read development credentials.
-async function harness(port: number, cloud: boolean): Promise<ViteDevServer> {
+async function harness(port: number, cloud: boolean, desktopKey: string | null = null): Promise<ViteDevServer> {
   const server = await createServer({
     configFile: false,
     envFile: false,
@@ -52,7 +52,7 @@ async function harness(port: number, cloud: boolean): Promise<ViteDevServer> {
           import { createRoot } from 'react-dom/client';
           import { useWorkspace } from '/src/lib/useWorkspace.ts';
           function Harness() {
-            window.workspace = useWorkspace();
+            window.workspace = useWorkspace(${JSON.stringify(desktopKey)});
             return React.createElement('output', null, window.workspace.syncStatus);
           }
           createRoot(document.getElementById('root')).render(React.createElement(React.StrictMode, null, React.createElement(Harness)));
@@ -136,6 +136,122 @@ async function mockCloud(page: Page, initial: Row | null) {
   });
   return remote;
 }
+
+async function mockDesktop(page: Page, initial: Row | null) {
+  const remote = { row: initial, writes: [] as Array<number | null>, failReads: false, failWrites: false };
+  await page.route('**/api/workspace', async route => {
+    expect(route.request().headers()['x-elephant-key']).toBe('d'.repeat(43));
+    if (route.request().method() === 'GET') {
+      return route.fulfill({ status: remote.failReads ? 502 : 200, json: remote.failReads ? { error: 'Offline' } : { workspace: remote.row } });
+    }
+    const body = route.request().postDataJSON();
+    remote.writes.push(body.expectedRevision);
+    if (remote.failWrites) return route.fulfill({ status: 502, json: { error: 'Offline' } });
+    if (body.expectedRevision !== (remote.row?.revision ?? null)) return route.fulfill({ status: 409, json: { error: 'Conflict' } });
+    remote.row = { data: body.data, revision: (remote.row?.revision ?? 0) + 1 };
+    return route.fulfill({ json: { revision: remote.row.revision } });
+  });
+  return remote;
+}
+
+test.describe('Private desktop Supabase workspace', () => {
+  let server: ViteDevServer;
+  let url: string;
+  test.beforeAll(async ({}, workerInfo) => {
+    const port = 5800 + workerInfo.workerIndex;
+    server = await harness(port, true, 'd'.repeat(43));
+    url = `http://127.0.0.1:${port}`;
+  });
+  test.afterAll(async () => { await server?.close(); });
+
+  async function seedDesktop(page: Page, state: AppState) {
+    const raw = JSON.stringify({ storageVersion: 1, state, revision: null, dirty: false });
+    await page.addInitScript(({ key, raw }) => {
+      if (!localStorage.getItem(key)) localStorage.setItem(key, raw);
+    }, { key: LOCAL_KEY, raw });
+    return raw;
+  }
+
+  test('migrates the original desktop, preserves its raw backup, and loads it on a fresh device', async ({ page, context }) => {
+    const original = { ...emptyState(), profile: { name: 'Original desktop' } };
+    const raw = await seedDesktop(page, original);
+    await signInFixture(page);
+    const authCalls: string[] = [];
+    await page.route(`${API_URL}/**`, route => { authCalls.push(route.request().url()); return route.fulfill({ status: 401, json: {} }); });
+    const remote = await mockDesktop(page, null);
+    await open(page, url);
+    await expect.poll(() => remote.row).toEqual({ data: original, revision: 1 });
+    await expect.poll(() => page.evaluate(() => window.workspace.syncStatus)).toBe('Saved to Supabase');
+    expect(authCalls).toEqual([]);
+    expect(await page.evaluate(() => window.workspace.userEmail)).toBeNull();
+    expect(await page.evaluate(key => Object.keys(localStorage).filter(k => k.startsWith(`${key}.before-supabase.`)).map(k => localStorage.getItem(k)), LOCAL_KEY)).toEqual([raw]);
+    await page.reload();
+    await expect.poll(() => page.evaluate(() => window.workspace?.state)).toEqual(original);
+    expect(remote.writes).toEqual([null]);
+    // A distinct browser context has no local workspace or sign-in to fall back to.
+    const fresh = await context.browser()!.newContext();
+    try {
+      const otherPage = await fresh.newPage();
+      const otherRemote = await mockDesktop(otherPage, remote.row);
+      await open(otherPage, url);
+      expect(await otherPage.evaluate(() => window.workspace.state)).toEqual(original);
+      expect(otherRemote.writes).toEqual([]);
+    } finally { await fresh.close(); }
+  });
+
+  test('keeps desktop edits through offline migration and uploads after retry', async ({ page }) => {
+    await seedDesktop(page, { ...emptyState(), profile: { name: 'Original' } });
+    const remote = await mockDesktop(page, null);
+    remote.failReads = true;
+    await open(page, url);
+    await rename(page, 'Edited offline');
+    expect(remote.writes).toEqual([]);
+    remote.failReads = false;
+    remote.failWrites = true;
+    await page.evaluate(() => window.workspace.retrySync());
+    await expect.poll(() => page.evaluate(() => window.workspace.error)).toContain('Cloud save failed');
+    expect(await page.evaluate(key => JSON.parse(localStorage.getItem(key)!).dirty, LOCAL_KEY)).toBe(true);
+    remote.failWrites = false;
+    await page.reload();
+    await expect.poll(() => remote.row?.data.profile.name).toBe('Edited offline');
+    await expect.poll(() => page.evaluate(() => window.workspace?.syncStatus)).toBe('Saved to Supabase');
+  });
+
+  test('never overwrites a different server workspace during migration or retry', async ({ page }) => {
+    const original = { ...emptyState(), profile: { name: 'Original desktop' } };
+    const raw = await seedDesktop(page, original);
+    const saved = { data: { ...emptyState(), profile: { name: 'Existing cloud' } }, revision: 8 };
+    const remote = await mockDesktop(page, saved);
+    await open(page, url);
+    await expect.poll(() => page.evaluate(() => window.workspace.syncStatus)).toContain('conflicting changes');
+    await page.evaluate(() => window.workspace.retrySync());
+    await expect.poll(() => page.evaluate(() => window.workspace.syncStatus)).toContain('conflicting changes');
+    expect(await page.evaluate(() => window.workspace.state)).toEqual(original);
+    expect(await page.evaluate(key => localStorage.getItem(key), LOCAL_KEY)).toBe(raw);
+    expect(remote.row).toEqual(saved);
+    expect(remote.writes).toEqual([]);
+  });
+
+  test('reconciles a completed migration whose response was lost despite JSONB key ordering', async ({ page }) => {
+    const original = { ...emptyState(), profile: { name: 'Original desktop' } };
+    await seedDesktop(page, original);
+    const reordered = Object.fromEntries(Object.entries(original).reverse()) as AppState;
+    const remote = await mockDesktop(page, { data: reordered, revision: 1 });
+    await open(page, url);
+    await expect.poll(() => page.evaluate(() => window.workspace.syncStatus)).toBe('Saved to Supabase');
+    expect(remote.writes).toEqual([]);
+    expect(await page.evaluate(key => JSON.parse(localStorage.getItem(key)!).cloudStore, LOCAL_KEY)).toBe('elephant');
+  });
+
+  test('a fresh desktop never uploads demo data and saves edits without a sign-in', async ({ page }) => {
+    const remote = await mockDesktop(page, null);
+    await open(page, url);
+    expect(await page.evaluate(() => window.workspace.state)).toEqual({ ...emptyState(), settings: { showMasterList: false } });
+    expect(remote.writes).toEqual([]);
+    await rename(page, 'New desktop');
+    await expect.poll(() => remote.row?.data.profile.name).toBe('New desktop');
+  });
+});
 
 test.describe('Workspace persistence', () => {
   let localServer: ViteDevServer;

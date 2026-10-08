@@ -4,6 +4,8 @@ import type { Session, SupabaseClient } from '@supabase/supabase-js';
 import { createDemoState, createEmptyState, ensureProjectPlaceholders, validateImport } from './model';
 import type { AppState } from './model';
 import { designs } from './designs';
+import { desktopRequest } from './desktopCloud';
+import type { CloudResult, CloudWorkspace } from './desktopCloud';
 
 const LOCAL_KEY = 'elephant.workspace.local.v1';
 const SAVE_DELAY = 650;
@@ -14,10 +16,13 @@ type Cache = {
   state: AppState;
   revision: number | null;
   dirty: boolean;
+  cloudStore?: 'elephant';
 };
 
 type Scope = Cache & {
   userId: string | null;
+  desktop: boolean;
+  migrationRaw: string | null;
   key: string;
   raw: string | null;
   loaded: boolean;
@@ -67,17 +72,19 @@ function configureClient(): { client: SupabaseClient | null; error: string | nul
 
 const configuration = configureClient();
 
-function readScope(userId: string | null): Scope {
+function readScope(userId: string | null, desktop = false): Scope {
   const key = userId ? `elephant.workspace.account.${userId}.v1` : LOCAL_KEY;
   const scope: Scope = {
     storageVersion: 1,
-    state: userId ? createEmptyState() : createDemoState(),
+    state: userId || desktop ? createEmptyState() : createDemoState(),
     revision: null,
     dirty: false,
     userId,
+    desktop,
+    migrationRaw: null,
     key,
     raw: null,
-    loaded: !userId,
+    loaded: !userId && !desktop,
     corrupt: false,
     conflict: false,
     cacheConflict: false,
@@ -102,9 +109,11 @@ function readScope(userId: string | null): Scope {
     }
     scope.state = validateImport(cache.state);
     // Account caches must first reconcile with the unmodified cloud snapshot.
-    if (!userId) scope.state = ensureProjectPlaceholders(scope.state);
-    scope.revision = cache.revision;
-    scope.dirty = userId ? cache.dirty : false;
+    if (!userId && !desktop) scope.state = ensureProjectPlaceholders(scope.state);
+    const migrating = desktop && cache.cloudStore !== 'elephant';
+    scope.migrationRaw = migrating ? scope.raw : null;
+    scope.revision = migrating ? null : cache.revision;
+    scope.dirty = migrating || ((userId || desktop) ? cache.dirty : false);
   } catch {
     scope.state = createEmptyState();
     scope.corrupt = true;
@@ -113,7 +122,7 @@ function readScope(userId: string | null): Scope {
   return scope;
 }
 
-export function useWorkspace(localOnly = false): {
+export function useWorkspace(desktopKey: string | null = null): {
   state: AppState;
   update: (next: NextState) => void;
   restoreBackup: (data: AppState) => Promise<void>;
@@ -140,7 +149,7 @@ export function useWorkspace(localOnly = false): {
   const actions = useRef<Actions | null>(null);
 
   useEffect(() => {
-    const client = localOnly ? null : configuration.client;
+    const client = desktopKey ? null : configuration.client;
     let active = true;
     let current: Scope | null = null;
     let authVersion = 0;
@@ -166,6 +175,23 @@ export function useWorkspace(localOnly = false): {
       };
     }
 
+    async function readRemote(scope: Scope, signal: AbortSignal): Promise<CloudResult<CloudWorkspace>> {
+      if (scope.desktop && desktopKey) return desktopRequest(desktopKey, signal);
+      if (!client || !scope.userId) throw new Error('Cloud storage is not configured.');
+      return await client.from('elephant_workspaces').select('data, revision')
+        .eq('user_id', scope.userId).abortSignal(signal).maybeSingle();
+    }
+
+    async function writeRemote(scope: Scope, snapshot: AppState, expectedRevision: number | null, signal: AbortSignal): Promise<CloudResult<{ revision: number }>> {
+      if (scope.desktop && desktopKey) return desktopRequest(desktopKey, signal, { data: snapshot, expectedRevision });
+      if (!client || !scope.userId) throw new Error('Cloud storage is not configured.');
+      const table = client.from('elephant_workspaces');
+      const query = expectedRevision === null
+        ? table.insert({ user_id: scope.userId, data: snapshot, revision: 1 })
+        : table.update({ data: snapshot, revision: expectedRevision + 1 }).eq('user_id', scope.userId).eq('revision', expectedRevision);
+      return await query.select('revision').abortSignal(signal).maybeSingle();
+    }
+
     function persist(scope: Scope): boolean {
       if (scope.corrupt || scope.cacheConflict) return false;
       try {
@@ -177,11 +203,18 @@ export function useWorkspace(localOnly = false): {
           setSyncStatus('Saving paused · another tab changed');
           return false;
         }
+        if (scope.migrationRaw !== null) {
+          const backupKey = `${LOCAL_KEY}.before-supabase.${crypto.randomUUID()}`;
+          localStorage.setItem(backupKey, scope.migrationRaw);
+          if (localStorage.getItem(backupKey) !== scope.migrationRaw) throw new Error('Could not preserve the original desktop workspace.');
+          scope.migrationRaw = null;
+        }
         const cache: Cache = {
           storageVersion: 1,
           state: scope.state,
           revision: scope.revision,
           dirty: scope.dirty,
+          ...(scope.desktop ? { cloudStore: 'elephant' as const } : {}),
         };
         const raw = JSON.stringify(cache);
         localStorage.setItem(scope.key, raw);
@@ -204,14 +237,14 @@ export function useWorkspace(localOnly = false): {
 
     function showSettled(scope: Scope) {
       if (scope.cacheConflict) return;
-      setError(scope.storageError || configuration.error);
-      setSyncStatus(scope.userId
-        ? (scope.storageError ? 'Cloud saved · browser backup unavailable' : 'Saved to cloud')
+      setError(scope.storageError || (scope.desktop ? null : configuration.error));
+      setSyncStatus(scope.userId || scope.desktop
+        ? (scope.storageError ? 'Cloud saved · browser backup unavailable' : scope.desktop ? scope.revision === null ? 'Supabase connected' : 'Saved to Supabase' : 'Saved to cloud')
         : (scope.storageError ? 'Not saved · export your work' : 'Saved on this device'));
     }
 
     async function saveCloud(scope: Scope) {
-      if (!client || !scope.userId || !isCurrent(scope) || !scope.loaded || scope.loading
+      if ((!client && !desktopKey) || (!scope.userId && !scope.desktop) || !isCurrent(scope) || !scope.loaded || scope.loading
         || scope.saving || scope.corrupt || scope.conflict || scope.cacheConflict || !scope.dirty) return;
       scope.saving = true;
       try {
@@ -222,18 +255,14 @@ export function useWorkspace(localOnly = false): {
           setSyncStatus('Saving to cloud…');
           const pending = request(scope);
           try {
-            const table = client.from('elephant_workspaces');
-            const query = expectedRevision === null
-              ? table.insert({ user_id: scope.userId, data: snapshot, revision: 1 })
-              : table.update({ data: snapshot, revision: expectedRevision + 1 })
-                .eq('user_id', scope.userId).eq('revision', expectedRevision);
-            const result = await query.select('revision').abortSignal(pending.signal).maybeSingle();
+            const result = await writeRemote(scope, snapshot, expectedRevision, pending.signal);
             if (!isCurrent(scope)) return;
             if (result.error?.code === '23505' || (!result.error && !result.data)) {
               showConflict(scope);
               return;
             }
             if (result.error) throw result.error;
+            if (!Number.isSafeInteger(result.data!.revision) || result.data!.revision < 1) throw new Error('Invalid cloud revision.');
             scope.revision = result.data!.revision as number;
             // An edit made while this request ran becomes the next serialized save.
             scope.dirty = JSON.stringify(scope.state) !== serialized;
@@ -253,20 +282,19 @@ export function useWorkspace(localOnly = false): {
     }
 
     async function loadCloud(scope: Scope) {
-      if (!client || !scope.userId || !isCurrent(scope) || scope.loading || scope.saving || scope.corrupt || scope.cacheConflict) return;
+      if ((!client && !desktopKey) || (!scope.userId && !scope.desktop) || !isCurrent(scope) || scope.loading || scope.saving || scope.corrupt || scope.cacheConflict) return;
       scope.loading = true;
       const pending = request(scope);
       setSyncStatus('Checking cloud workspace…');
       try {
-        const result = await client.from('elephant_workspaces').select('data, revision')
-          .eq('user_id', scope.userId).abortSignal(pending.signal).maybeSingle();
+        const result = await readRemote(scope, pending.signal);
         if (!isCurrent(scope)) return;
         if (result.error) throw result.error;
         const remote = result.data ? validateImport(result.data.data) : createEmptyState();
         const revision = result.data ? result.data.revision as number : null;
         if (revision !== null && (!Number.isSafeInteger(revision) || revision < 1)) throw new Error('Invalid cloud revision.');
         if (scope.dirty) {
-          if (JSON.stringify(scope.state) === JSON.stringify(remote)) {
+          if (JSON.stringify(validateImport(scope.state)) === JSON.stringify(remote)) {
             // Covers a completed save whose response was lost during a disconnect.
             scope.revision = revision;
             scope.dirty = false;
@@ -311,15 +339,15 @@ export function useWorkspace(localOnly = false): {
       setAccessToken(session?.access_token || null);
       if (current && current.userId === userId) return;
       stop(current);
-      current = readScope(userId);
+      current = readScope(userId, Boolean(desktopKey));
       const scope = current;
-      setMode(userId ? 'cloud' : 'local');
+      setMode(userId || scope.desktop ? 'cloud' : 'local');
       setState(scope.state);
       setRecoveryNeeded(scope.corrupt);
-      setReady(!userId || scope.corrupt);
+      setReady((!userId && !scope.desktop) || scope.corrupt);
       setError(scope.storageError || configuration.error);
       if (scope.corrupt) setSyncStatus('Recovery needed · editing paused');
-      else if (userId) void loadCloud(scope);
+      else if (userId || scope.desktop) void loadCloud(scope);
       else {
         persist(scope);
         showSettled(scope);
@@ -332,10 +360,10 @@ export function useWorkspace(localOnly = false): {
         if (!scope) throw new Error('Your workspace is still loading. Please try again in a moment.');
         if (scope.corrupt) throw new Error(scope.storageError || 'Editing is paused to protect your saved data.');
         scope.state = typeof next === 'function' ? next(scope.state) : next;
-        scope.dirty = Boolean(scope.userId);
+        scope.dirty = Boolean(scope.userId || scope.desktop);
         setState(scope.state);
         persist(scope);
-        if (!scope.userId) {
+        if (!scope.userId && !scope.desktop) {
           showSettled(scope);
           return;
         }
@@ -357,12 +385,11 @@ export function useWorkspace(localOnly = false): {
         setSyncStatus('Restoring backup…');
         try {
           let revision: number | null = null;
-          if (scope.userId) {
-            if (!client) throw new Error('Could not connect to your account. Your saved data has not been changed.');
+          if (scope.userId || scope.desktop) {
+            if (!client && !desktopKey) throw new Error('Could not connect to cloud storage. Your saved data has not been changed.');
             const pending = request(scope);
             try {
-              const result = await client.from('elephant_workspaces').select('revision')
-                .eq('user_id', scope.userId).abortSignal(pending.signal).maybeSingle();
+              const result = await readRemote(scope, pending.signal);
               if (!isCurrent(scope)) throw new Error('Your account changed before the restore finished. Please restore the backup again in the intended account.');
               if (result.error) throw new Error('Could not check the cloud workspace. Your saved data has not been changed. Check your connection and try restoring again.');
               revision = result.data ? result.data.revision as number : null;
@@ -385,7 +412,7 @@ export function useWorkspace(localOnly = false): {
               localStorage.setItem(recoveryKey, damaged);
               if (localStorage.getItem(recoveryKey) !== damaged) throw new Error('The original saved data could not be preserved.');
             }
-            const cache: Cache = { storageVersion: 1, state: restored, revision, dirty: Boolean(scope.userId) };
+            const cache: Cache = { storageVersion: 1, state: restored, revision, dirty: Boolean(scope.userId || scope.desktop), ...(scope.desktop ? { cloudStore: 'elephant' as const } : {}) };
             raw = JSON.stringify(cache);
             if (localStorage.getItem(scope.key) !== damaged) throw new Error('Saved data changed in another tab.');
             localStorage.setItem(scope.key, raw);
@@ -395,7 +422,7 @@ export function useWorkspace(localOnly = false): {
           scope.state = restored;
           scope.revision = revision;
           scope.raw = raw;
-          scope.dirty = Boolean(scope.userId);
+          scope.dirty = Boolean(scope.userId || scope.desktop);
           scope.loaded = true;
           scope.corrupt = false;
           scope.conflict = false;
@@ -413,13 +440,13 @@ export function useWorkspace(localOnly = false): {
         } finally {
           scope.loading = false;
         }
-        if (scope.userId) void saveCloud(scope);
+        if (scope.userId || scope.desktop) void saveCloud(scope);
         else showSettled(scope);
       },
       retrySync() {
         const scope = current;
         if (!scope || scope.corrupt || scope.cacheConflict) return;
-        if (scope.userId) void loadCloud(scope);
+        if (scope.userId || scope.desktop) void loadCloud(scope);
         else {
           persist(scope);
           showSettled(scope);
@@ -447,9 +474,12 @@ export function useWorkspace(localOnly = false): {
     };
 
     const onOnline = () => {
-      if (current?.userId) void loadCloud(current);
+      if (current && (current.userId || current.desktop)) void loadCloud(current);
     };
     window.addEventListener('online', onOnline);
+    const onVisible = () => { if (desktopKey && document.visibilityState === 'visible') onOnline(); };
+    if (desktopKey) window.addEventListener('focus', onVisible);
+    const interval = desktopKey ? window.setInterval(onVisible, 30_000) : null;
     let unsubscribe: (() => void) | undefined;
     if (client) {
       const { data } = client.auth.onAuthStateChange((_event, session) => {
@@ -480,9 +510,11 @@ export function useWorkspace(localOnly = false): {
       authTimers.forEach(clearTimeout);
       unsubscribe?.();
       window.removeEventListener('online', onOnline);
+      window.removeEventListener('focus', onVisible);
+      if (interval) window.clearInterval(interval);
       actions.current = null;
     };
-  }, [localOnly]);
+  }, [desktopKey]);
 
   const update = useCallback((next: NextState) => actions.current?.update(next), []);
   const retrySync = useCallback(() => actions.current?.retrySync(), []);
