@@ -56,6 +56,7 @@ import ActivityLog from "./components/ActivityLog";
 import { ConnectAnotherDevice } from "./components/WorkspaceConnection";
 import { saveLogEntry, removeLogEntry } from "./lib/activityLog";
 import FocusTimer from "./components/FocusTimer";
+import ProjectFocus from "./components/ProjectFocus";
 import Calendar from "./components/Calendar";
 import ScheduledItemSheet from "./components/ScheduledItemSheet";
 import ScheduledReminderCard from "./components/ScheduledReminderCard";
@@ -67,6 +68,9 @@ import {
   addItem,
   addProject,
   completeCurrent,
+  currentQueueEntry,
+  activeFocusMode,
+  setFocusMode,
   createEmptyState,
   deleteItem,
   deleteProject,
@@ -259,7 +263,8 @@ export default function App({
             : screen.charAt(0).toUpperCase() + screen.slice(1);
   const design = designs.find((d) => d.id === designId) ?? designs[0];
   const queue = resolveQueue(state);
-  const current = queue[0];
+  const current = currentQueueEntry(state);
+  const focusMode = activeFocusMode(state);
   const now = Date.now();
   const reminder = getActiveReminder(state, now);
   const timerScope = localPiano.key
@@ -414,6 +419,15 @@ export default function App({
       return false;
     }
   }
+  function changeFocusMode(projectId: string | null, between: number) {
+    update((current) => setFocusMode(current, projectId, between));
+    setToast(
+      projectId
+        ? "Focus mode is on."
+        : "Focus mode off. Back to your master list.",
+    );
+    if (projectId) navigate("focus");
+  }
   function completeFocusedItem(timeSpentSeconds?: number) {
     if (!current || current.item.isPlaceholder) return;
     if (
@@ -421,7 +435,7 @@ export default function App({
         (s) => completeCurrent(s, timeSpentSeconds),
         (next) => {
           const count = countCompletedToday(next.items);
-          return `One small step, done. ${count} ${count === 1 ? "item" : "items"} completed today.`;
+          return `One small step, done. ${count} ${count === 1 ? "item" : "items"} completed today.${focusMode && !activeFocusMode(next) ? " Focus mode finished; back to the master list." : ""}`;
         },
       )
     ) {
@@ -985,6 +999,7 @@ export default function App({
                       )}
                     </div>
                   </div>
+                  <ProjectFocus state={state} onChange={changeFocusMode} />
                   {reminder ? (
                     <ScheduledReminderCard
                       item={reminder.item}
@@ -1516,6 +1531,11 @@ export default function App({
                         </button>
                       )}
                     </div>
+                    <ProjectFocus
+                      state={state}
+                      projectId={project.id}
+                      onChange={changeFocusMode}
+                    />
                     <div className="section-heading">
                       <h2>One step, then another.</h2>
                       <span>
@@ -1937,8 +1957,9 @@ export default function App({
                   />
                   <p className="queue-note">
                     <Leaf size={17} />
-                    This is your current queue. Project steps keep their
-                    reserved places as you edit them.
+                    {focusMode
+                      ? "Focus mode selects your next item from this list without rearranging it."
+                      : "This is your current queue. Project steps keep their reserved places as you edit them."}
                   </p>
                   <div className="queue-list">
                     {queue.map((entry, index) => (
@@ -1954,7 +1975,7 @@ export default function App({
                           </strong>
                           <small>{entry.project?.name || "Errand"}</small>
                         </div>
-                        {index === 0 && (
+                        {entry.item.id === current?.item.id && (
                           <span className="now-badge">DO NOW</span>
                         )}
                         <button
@@ -2793,7 +2814,8 @@ export default function App({
                     try {
                       update((s) => {
                         const finishingCurrent =
-                          resolveQueue(s)[0]?.project?.id === modal.project.id;
+                          currentQueueEntry(s)?.project?.id ===
+                          modal.project.id;
                         const next = updateProject(s, modal.project.id, {
                           status: "completed",
                         });
@@ -2910,6 +2932,7 @@ export default function App({
                   update({
                     ...empty,
                     activityLog: [],
+                    focusMode: null,
                     profile: state.profile,
                     settings: state.settings,
                   });
@@ -2947,6 +2970,7 @@ export default function App({
                       await workspace.restoreBackup({
                         ...modal.data,
                         activityLog: modal.data.activityLog ?? [],
+                        focusMode: modal.data.focusMode ?? null,
                       });
                       setModal(null);
                       navigate("home");

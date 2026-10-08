@@ -30,6 +30,12 @@ export type QueueSlot =
   | { id: string; kind: 'project'; projectId: string; createdAt: string }
   | { id: string; kind: 'errand'; itemId: string; createdAt: string };
 
+export interface FocusModeState {
+  projectId: string;
+  between: 0 | 1 | 2 | 3;
+  remaining: number;
+}
+
 export interface AppState {
   version: 1;
   profile: { name: string; avatarUrl?: string };
@@ -40,6 +46,7 @@ export interface AppState {
   scheduledItems: ScheduledItem[];
   activeReminder: ScheduledReminder | null;
   activityLog?: LogEntry[];
+  focusMode?: FocusModeState | null;
 }
 
 export interface ResolvedQueueEntry {
@@ -114,6 +121,49 @@ export function resolveQueue(state: AppState): ResolvedQueueEntry[] {
   return result;
 }
 
+/** Focus selects work from the master queue without rearranging its slots. */
+export function activeFocusMode(state: AppState): FocusModeState | null {
+  const focus = state.focusMode;
+  if (!focus || !state.projects.some((project) => project.id === focus.projectId && project.status === 'active')
+    || !state.items.some((item) => item.projectId === focus.projectId && !item.completedAt && !item.isPlaceholder)) return null;
+  return focus;
+}
+
+function normalizeFocusMode(state: AppState): AppState {
+  const focus = activeFocusMode(state);
+  if (state.focusMode && !focus) return { ...state, focusMode: null };
+  // Once other work runs out, the project turn has begun. Newly added errands
+  // must not pull the user away from the task already being shown.
+  if (focus && focus.remaining > 0 && !resolveQueue(state).some((entry) => entry.item.projectId !== focus.projectId && !entry.item.isPlaceholder)) {
+    return { ...state, focusMode: { ...focus, remaining: 0 } };
+  }
+  return state;
+}
+
+export function setFocusMode(state: AppState, projectId: string | null, between: number = 0): AppState {
+  if (projectId === null) return { ...state, focusMode: null };
+  if (!Number.isInteger(between) || between < 0 || between > 3) throw new Error('Choose 0, 1, 2, or 3 items between project tasks.');
+  if (!state.projects.some((project) => project.id === projectId && project.status === 'active')
+    || !state.items.some((item) => item.projectId === projectId && !item.completedAt && !item.isPlaceholder)) {
+    throw new Error('Choose an active project with unfinished tasks.');
+  }
+  if (activeFocusMode(state)?.projectId === projectId && state.focusMode?.between === between) return state;
+  return { ...state, focusMode: { projectId, between: between as FocusModeState['between'], remaining: 0 } };
+}
+
+export function currentQueueEntry(state: AppState): ResolvedQueueEntry | undefined {
+  const queue = resolveQueue(state);
+  const focus = activeFocusMode(state);
+  if (!focus) return queue[0];
+  const focused = queue.find((entry) => entry.item.projectId === focus.projectId && !entry.item.isPlaceholder);
+  if (!focused) return queue[0];
+  if (focus.remaining > 0) {
+    const other = queue.find((entry) => entry.item.projectId !== focus.projectId && !entry.item.isPlaceholder);
+    if (other) return other;
+  }
+  return focused;
+}
+
 /** Migrate empty open projects without disturbing existing items or queue order. */
 export function ensureProjectPlaceholders(state: AppState): AppState {
   let items = state.items;
@@ -129,7 +179,7 @@ export function ensureProjectPlaceholders(state: AppState): AppState {
       queue = [...queue, projectSlot(project.id)];
     }
   }
-  return items === state.items && queue === state.queue ? state : { ...state, items, queue };
+  return normalizeFocusMode(items === state.items && queue === state.queue ? state : { ...state, items, queue });
 }
 
 /** Run once after add/completion. Existing slots stay in place; new slots append. */
@@ -220,14 +270,14 @@ export function updateProject(state: AppState, projectId: string, patch: Partial
 export function deleteProject(state: AppState, projectId: string): AppState {
   const project = state.projects.find((entry) => entry.id === projectId);
   if (!project) return state;
-  return {
+  return normalizeFocusMode({
     ...state,
     projects: state.projects.filter((project) => project.id !== projectId),
     items: state.items.flatMap((item): Item[] => item.projectId !== projectId
       ? [item]
       : item.completedAt ? [{ ...item, projectId: null, deletedProjectName: project.name }] : []),
     queue: state.queue.filter((slot) => slot.kind !== 'project' || slot.projectId !== projectId),
-  };
+  });
 }
 
 export function renameItem(state: AppState, itemId: string, value: string): AppState {
@@ -287,7 +337,7 @@ export function completeCurrent(state: AppState, timeSpentSeconds?: number): App
   if (timeSpentSeconds !== undefined && (!Number.isSafeInteger(timeSpentSeconds) || timeSpentSeconds < 0)) {
     throw new Error('Time spent must be a nonnegative whole number of seconds.');
   }
-  const current = resolveQueue(state)[0];
+  const current = currentQueueEntry(state);
   if (!current || current.item.isPlaceholder) return state;
   const timestamp = now();
   const items = state.items.map((item) => {
@@ -299,7 +349,9 @@ export function completeCurrent(state: AppState, timeSpentSeconds?: number): App
   });
   // A project stays open until the user explicitly marks the project complete.
   const activityLog = [...(state.activityLog ?? []), logCompletedTask(state, current.item, timestamp, timeSpentSeconds)];
-  return presentReminder(reprocess({ ...state, items, activityLog, queue: state.queue.filter((slot) => slot.id !== current.slot.id) }));
+  const focus = activeFocusMode(state);
+  const focusMode = focus ? { ...focus, remaining: current.item.projectId === focus.projectId ? focus.between : Math.max(0, focus.remaining - 1) } : state.focusMode;
+  return presentReminder(reprocess({ ...state, items, activityLog, ...(focusMode === undefined ? {} : { focusMode }), queue: state.queue.filter((slot) => slot.id !== current.slot.id) }));
 }
 
 /** Restore the original completed item to the front without reprocessing others. */
@@ -336,7 +388,7 @@ export function putBackItem(state: AppState, itemId: string): AppState {
 export function takeBite(state: AppState, firstTitle: string, remainderTitle: string): AppState {
   const first = title(firstTitle);
   const remainder = title(remainderTitle);
-  const current = resolveQueue(state)[0];
+  const current = currentQueueEntry(state);
   if (!current || current.item.isPlaceholder) return state;
   const index = state.items.findIndex((item) => item.id === current.item.id);
   const items = [...state.items];
@@ -516,7 +568,18 @@ export function validateImport(input: unknown): AppState {
     return { id: string(entry.id, 'log ID'), title, category: entry.category as LogCategory, startedAt, endedAt, createdAt: timestamp(entry.createdAt, 'log createdAt'), ...(entry.taskId === undefined ? {} : { taskId: string(entry.taskId, 'log task ID') }), ...(entry.scheduledItemId === undefined ? {} : { scheduledItemId: string(entry.scheduledItemId, 'log scheduled item ID') }), ...(entry.inferred === undefined ? {} : { inferred: entry.inferred }) };
   });
   if (activityLog) unique(activityLog, 'log entry');
-  const state: AppState = { version: 1, profile: { name: string(profile.name, 'profile name', true), ...(avatarUrl ? { avatarUrl } : {}) }, settings: { showMasterList: settings.showMasterList }, projects, items, queue, scheduledItems, activeReminder, ...(activityLog === undefined ? {} : { activityLog }) };
+  let focusMode: FocusModeState | null | undefined;
+  if (data.focusMode === null) focusMode = null;
+  else if (data.focusMode !== undefined) {
+    const focus = record(data.focusMode, 'focus mode');
+    const projectId = string(focus.projectId, 'focus project ID');
+    if (!Number.isInteger(focus.between) || Number(focus.between) < 0 || Number(focus.between) > 3
+      || !Number.isInteger(focus.remaining) || Number(focus.remaining) < 0 || Number(focus.remaining) > Number(focus.between)) {
+      throw new Error('Invalid backup: focus mode spacing or progress is invalid.');
+    }
+    focusMode = { projectId, between: focus.between as FocusModeState['between'], remaining: focus.remaining as number };
+  }
+  const state: AppState = { version: 1, profile: { name: string(profile.name, 'profile name', true), ...(avatarUrl ? { avatarUrl } : {}) }, settings: { showMasterList: settings.showMasterList }, projects, items, queue, scheduledItems, activeReminder, ...(activityLog === undefined ? {} : { activityLog }), ...(focusMode === undefined ? {} : { focusMode }) };
   const resolved = resolveQueue(state);
   if (resolved.length !== queue.length) throw new Error('Invalid backup: queue contains a missing, inactive, duplicate, completed, or excess task.');
   const queuedErrands = new Set(queue.flatMap((slot) => slot.kind === 'errand' ? [slot.itemId] : []));
@@ -524,7 +587,7 @@ export function validateImport(input: unknown): AppState {
   for (const project of projects) {
     if (project.status === 'active' && items.some((item) => item.projectId === project.id && !item.completedAt) && !queue.some((slot) => slot.kind === 'project' && slot.projectId === project.id)) throw new Error('Invalid backup: an active project is missing from the queue.');
   }
-  return state;
+  return normalizeFocusMode(state);
 }
 
 /** Quote every field and escape spreadsheet formulas before CSV download. */

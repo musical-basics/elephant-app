@@ -306,9 +306,15 @@ test("blank placeholders survive JSON backup and restore without inflating analy
     .getByRole("button", { name: "Replace current data", exact: true })
     .click();
   await expect(page.getByRole("dialog")).toHaveCount(0);
-  expect(await readState(page)).toEqual(original);
+  expect(await readState(page)).toEqual({
+    ...original,
+    focusMode: original.focusMode ?? null,
+  });
   await page.reload();
-  expect(await readState(page)).toEqual(original);
+  expect(await readState(page)).toEqual({
+    ...original,
+    focusMode: original.focusMode ?? null,
+  });
   await page.goto(`/#/still/project/${projectId}`);
   await expect(
     page.getByRole("button", { name: "Edit placeholder", exact: true }),

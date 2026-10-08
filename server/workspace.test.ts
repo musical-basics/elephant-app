@@ -1,7 +1,12 @@
 import { createHash } from "node:crypto";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { GET, PUT } from "../api/workspace";
-import { createEmptyState } from "../src/lib/model";
+import {
+  addProject,
+  addItem,
+  createEmptyState,
+  setFocusMode,
+} from "../src/lib/model";
 
 const key = "w".repeat(43);
 const endpoint = "https://elephant.test/api/workspace";
@@ -75,7 +80,7 @@ it("passes an explicit expected revision and ignores client-supplied workspace I
       expect(String(input)).toContain("/rpc/elephant_save_desktop");
       expect(JSON.parse(init.body)).toEqual({
         p_workspace_id: "desktop",
-        p_data: { ...createEmptyState(), activityLog: [] },
+        p_data: { ...createEmptyState(), activityLog: [], focusMode: null },
         p_expected_revision: 4,
       });
       return Response.json({ revision: 5 });
@@ -83,7 +88,7 @@ it("passes an explicit expected revision and ignores client-supplied workspace I
   );
   const response = await PUT(
     request({
-      data: { ...createEmptyState(), activityLog: [] },
+      data: { ...createEmptyState(), activityLog: [], focusMode: null },
       expectedRevision: 4,
       workspaceId: "someone-else",
     }),
@@ -176,4 +181,48 @@ it("does not overwrite Supabase when preserving an older tab’s logs fails", as
       .status,
   ).toBe(502);
   expect(fetchMock).toHaveBeenCalledTimes(1);
+});
+
+it("preserves focus mode omitted by an older tab, and accepts an explicit stop", async () => {
+  let state = addProject(createEmptyState(), "Focus");
+  state = setFocusMode(
+    addItem(state, "Task", state.projects[0].id),
+    state.projects[0].id,
+    2,
+  );
+  const { focusMode, ...legacy } = state;
+  let readCount = 0;
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (input, init) => {
+      if (String(input).endsWith("/elephant_read_desktop")) {
+        readCount++;
+        return Response.json({ data: state, revision: 4 });
+      }
+      expect(JSON.parse(init.body).p_data.focusMode).toEqual(focusMode);
+      return Response.json({ revision: 5 });
+    }),
+  );
+  expect(
+    (await PUT(request({ data: legacy, expectedRevision: 4 }))).status,
+  ).toBe(200);
+  expect(readCount).toBe(1);
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (input, init) => {
+      expect(String(input)).toContain("/elephant_save_desktop");
+      expect(JSON.parse(init.body).p_data.focusMode).toBeNull();
+      return Response.json({ revision: 6 });
+    }),
+  );
+  expect(
+    (
+      await PUT(
+        request({
+          data: { ...state, focusMode: null, activityLog: [] },
+          expectedRevision: 5,
+        }),
+      )
+    ).status,
+  ).toBe(200);
 });

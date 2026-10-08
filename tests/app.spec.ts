@@ -562,7 +562,11 @@ test("master queue stays hidden until enabled, JSON export and guarded reset/imp
       () =>
         JSON.parse(localStorage.getItem("elephant.workspace.local.v1")!).state,
     ),
-  ).toEqual({ ...original, activityLog: original.activityLog ?? [] });
+  ).toEqual({
+    ...original,
+    activityLog: original.activityLog ?? [],
+    focusMode: original.focusMode ?? null,
+  });
 });
 
 test("a downloaded JSON backup restores a corrupted browser workspace", async ({
@@ -621,7 +625,11 @@ test("a downloaded JSON backup restores a corrupted browser workspace", async ({
       (key) => JSON.parse(localStorage.getItem(key)!).state,
       key,
     ),
-  ).toEqual({ ...original, activityLog: original.activityLog ?? [] });
+  ).toEqual({
+    ...original,
+    activityLog: original.activityLog ?? [],
+    focusMode: original.focusMode ?? null,
+  });
   await page.reload();
   await expect(
     page.getByRole("button", { name: "Start working", exact: true }),
@@ -631,7 +639,11 @@ test("a downloaded JSON backup restores a corrupted browser workspace", async ({
       (key) => JSON.parse(localStorage.getItem(key)!).state,
       key,
     ),
-  ).toEqual({ ...original, activityLog: original.activityLog ?? [] });
+  ).toEqual({
+    ...original,
+    activityLog: original.activityLog ?? [],
+    focusMode: original.focusMode ?? null,
+  });
 });
 
 test("320px project/settings screens fit and dialog drafts require an explicit action", async ({

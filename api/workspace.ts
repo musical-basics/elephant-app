@@ -91,19 +91,22 @@ export async function PUT(request: Request) {
     return json({ error: "The workspace is invalid; nothing was saved." }, 400);
   }
   try {
-    // Older open tabs do not know about activityLog. Preserve that field while
+    // Older open tabs may omit newer fields. Preserve them while
     // retaining the caller's revision so a concurrent write still conflicts.
-    if (body.data.activityLog === undefined && body.expectedRevision !== null) {
+    const missing = (["activityLog", "focusMode"] as const).filter(
+      (field) => body.data[field] === undefined,
+    );
+    if (missing.length && body.expectedRevision !== null) {
       const current = await client.rpc("elephant_read_desktop", {
         p_workspace_id: process.env.ELEPHANT_WORKSPACE_ID || "desktop",
       });
       if (current.error) throw current.error;
-      if (current.data?.data?.activityLog !== undefined) {
-        body.data = validateImport({
-          ...body.data,
-          activityLog: current.data.data.activityLog,
-        });
-      }
+      const preserved = Object.fromEntries(
+        missing
+          .filter((field) => current.data?.data?.[field] !== undefined)
+          .map((field) => [field, current.data.data[field]]),
+      );
+      body.data = validateImport({ ...body.data, ...preserved });
     }
     const { data, error } = await client.rpc("elephant_save_desktop", {
       p_workspace_id: process.env.ELEPHANT_WORKSPACE_ID || "desktop",

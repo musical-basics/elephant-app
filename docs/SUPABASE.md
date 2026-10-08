@@ -85,3 +85,7 @@ For local integration work, use `vercel dev` with the server environment configu
 ## Activity logs
 
 The optional `activityLog` array lives in the existing workspace JSON; no new table or schema migration is required. Task completion and its inferred activity interval save in the same workspace update. Logs use UTC timestamps, render in local time, and roundtrip through backups. Restoring a legacy backup clears logs explicitly, as does Reset workspace. The private workspace API preserves existing logs when an older client omits the field, while still enforcing that client’s expected revision. An explicit empty array clears logs.
+
+## Focus mode
+
+The optional `focusMode` JSON field stores the selected active project, `between` (0–3), and the number of other master-list tasks still to complete before returning. It is saved atomically with task completion and its activity log, with the existing revision checks and device refresh behavior. It does not reorder master-list slots. A null value explicitly ends focus; old backups without the field still load, and restoring one through the UI clears focus. Invalid spacing/progress is rejected; a no-longer-active or empty project clears the selection. Reset workspace clears focus too. The private API preserves focus data omitted by an older client, using the same guarded read and expected revision as log preservation.
