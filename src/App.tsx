@@ -177,6 +177,8 @@ function countCompletedToday(items: Item[]) {
   ).length;
 }
 
+const COMPLETED_PAGE_SIZE = 25;
+
 function submitTaskOnEnter(event: ReactKeyboardEvent<HTMLTextAreaElement>) {
   if (
     event.key !== "Enter" ||
@@ -220,6 +222,7 @@ export default function App({
   const [projectTab, setProjectTab] = useState<"active" | "inactive">("active");
   const [sort, setSort] = useState("name");
   const [search, setSearch] = useState("");
+  const [completedPage, setCompletedPage] = useState(1);
   const [selectedItem, setSelectedItem] = useState<string | null>(null);
   const [clockTick, setClockTick] = useState(0);
   const importRef = useRef<HTMLInputElement>(null);
@@ -272,7 +275,29 @@ export default function App({
     .filter((i) => i.completedAt)
     .sort((a, b) => b.completedAt!.localeCompare(a.completedAt!));
   const completedToday = countCompletedToday(completedItems);
+  const matchingCompletedItems = completedItems.filter((item) =>
+    item.title.toLowerCase().includes(search.toLowerCase()),
+  );
+  const completedPageCount = Math.max(
+    1,
+    Math.ceil(matchingCompletedItems.length / COMPLETED_PAGE_SIZE),
+  );
+  const currentCompletedPage = Math.min(completedPage, completedPageCount);
+  const completedPageStart = (currentCompletedPage - 1) * COMPLETED_PAGE_SIZE;
+  const visibleCompletedItems = matchingCompletedItems.slice(
+    completedPageStart,
+    completedPageStart + COMPLETED_PAGE_SIZE,
+  );
   const activeProjects = state.projects.filter((p) => p.status === "active");
+
+  useEffect(() => {
+    setCompletedPage((page) => Math.min(page, completedPageCount));
+  }, [completedPageCount]);
+
+  function changeCompletedPage(page: number) {
+    setCompletedPage(page);
+    window.scrollTo(0, 0);
+  }
 
   useEffect(() => {
     void preloadCompletionSound();
@@ -316,6 +341,7 @@ export default function App({
       )
         countdown.resume();
       setRoute(readRoute());
+      setCompletedPage(1);
       setSelectedItem(null);
       setModal(null);
       setCompletionCelebration(null);
@@ -1688,78 +1714,75 @@ export default function App({
                         aria-label="Search completed entries"
                         placeholder="Find a little win"
                         value={search}
-                        onChange={(e) => setSearch(e.target.value)}
+                        onChange={(e) => {
+                          setSearch(e.target.value);
+                          setCompletedPage(1);
+                        }}
                       />
                     </label>
                   </div>
                   <div className="completed-list">
                     {completedTab === "items"
-                      ? completedItems
-                          .filter((i) =>
-                            i.title
-                              .toLowerCase()
-                              .includes(search.toLowerCase()),
-                          )
-                          .map((item) => (
-                            <div className="completed-row" key={item.id}>
-                              <span className="completed-check">
-                                <Check size={17} />
-                              </span>
-                              <div>
-                                <strong>{item.title}</strong>
-                                <p>
-                                  {state.projects.find(
-                                    (p) => p.id === item.projectId,
-                                  )?.name ||
-                                    (item.deletedProjectName
-                                      ? `${item.deletedProjectName} (deleted project)`
-                                      : "Errand")}
-                                </p>
-                                <time dateTime={item.completedAt!}>
-                                  {formatDate(item.completedAt!, true)}
-                                </time>
-                                {item.timeSpentSeconds !== undefined && (
-                                  <span className="completed-task-time">
-                                    <Timer size={13} />
-                                    Time spent:{" "}
-                                    {formatElapsedTime(item.timeSpentSeconds)}
-                                  </span>
-                                )}
-                              </div>
-                              <span className="completed-actions">
-                                <button
-                                  type="button"
-                                  className="secondary-button put-back-item"
-                                  aria-label={`Put back ${item.title}`}
-                                  title="Restore to the front of Do now"
-                                  onClick={() =>
-                                    mutate(
-                                      (s) => putBackItem(s, item.id),
-                                      "Item put back at the front of Do now.",
-                                    )
-                                  }
-                                >
-                                  <RotateCcw size={16} />
-                                  Put back
-                                </button>
-                                <DuplicateButton
-                                  item={item}
-                                  onDuplicate={() => duplicate(item)}
-                                />
-                                <button
-                                  type="button"
-                                  className="icon-button subtle-delete"
-                                  aria-label={`Delete ${item.title}`}
-                                  title="Remove from completed history"
-                                  onClick={() =>
-                                    setModal({ kind: "delete", item })
-                                  }
-                                >
-                                  <Trash2 size={18} />
-                                </button>
-                              </span>
+                      ? visibleCompletedItems.map((item) => (
+                          <div className="completed-row" key={item.id}>
+                            <span className="completed-check">
+                              <Check size={17} />
+                            </span>
+                            <div>
+                              <strong>{item.title}</strong>
+                              <p>
+                                {state.projects.find(
+                                  (p) => p.id === item.projectId,
+                                )?.name ||
+                                  (item.deletedProjectName
+                                    ? `${item.deletedProjectName} (deleted project)`
+                                    : "Errand")}
+                              </p>
+                              <time dateTime={item.completedAt!}>
+                                {formatDate(item.completedAt!, true)}
+                              </time>
+                              {item.timeSpentSeconds !== undefined && (
+                                <span className="completed-task-time">
+                                  <Timer size={13} />
+                                  Time spent:{" "}
+                                  {formatElapsedTime(item.timeSpentSeconds)}
+                                </span>
+                              )}
                             </div>
-                          ))
+                            <span className="completed-actions">
+                              <button
+                                type="button"
+                                className="secondary-button put-back-item"
+                                aria-label={`Put back ${item.title}`}
+                                title="Restore to the front of Do now"
+                                onClick={() =>
+                                  mutate(
+                                    (s) => putBackItem(s, item.id),
+                                    "Item put back at the front of Do now.",
+                                  )
+                                }
+                              >
+                                <RotateCcw size={16} />
+                                Put back
+                              </button>
+                              <DuplicateButton
+                                item={item}
+                                onDuplicate={() => duplicate(item)}
+                              />
+                              <button
+                                type="button"
+                                className="icon-button subtle-delete"
+                                aria-label={`Delete ${item.title}`}
+                                title="Remove from completed history"
+                                onClick={() =>
+                                  setModal({ kind: "delete", item })
+                                }
+                              >
+                                <Trash2 size={18} />
+                              </button>
+                            </span>
+                          </div>
+                        ))
                       : state.projects
                           .filter(
                             (p) =>
@@ -1789,15 +1812,52 @@ export default function App({
                             </button>
                           ))}
                   </div>
+                  {completedTab === "items" && completedPageCount > 1 && (
+                    <nav
+                      className="completed-pagination"
+                      aria-label="Completed items pagination"
+                    >
+                      <p className="completed-page-range">
+                        {completedPageStart + 1}–
+                        {completedPageStart + visibleCompletedItems.length} of{" "}
+                        {matchingCompletedItems.length} items
+                      </p>
+                      <div className="completed-page-controls">
+                        <button
+                          type="button"
+                          className="secondary-button"
+                          aria-label="Previous page"
+                          disabled={currentCompletedPage === 1}
+                          onClick={() =>
+                            changeCompletedPage(currentCompletedPage - 1)
+                          }
+                        >
+                          <ArrowLeft size={16} /> Previous
+                        </button>
+                        <span aria-live="polite" aria-atomic="true">
+                          Page {currentCompletedPage} of {completedPageCount}
+                        </span>
+                        <button
+                          type="button"
+                          className="secondary-button"
+                          aria-label="Next page"
+                          disabled={currentCompletedPage === completedPageCount}
+                          onClick={() =>
+                            changeCompletedPage(currentCompletedPage + 1)
+                          }
+                        >
+                          Next <ArrowRight size={16} />
+                        </button>
+                      </div>
+                    </nav>
+                  )}
                   {formError && (
                     <p className="form-error" role="alert">
                       {formError}
                     </p>
                   )}
                   {(completedTab === "items"
-                    ? !completedItems.some((i) =>
-                        i.title.toLowerCase().includes(search.toLowerCase()),
-                      )
+                    ? matchingCompletedItems.length === 0
                     : !state.projects.some(
                         (p) =>
                           p.status === "completed" &&

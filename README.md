@@ -35,7 +35,7 @@ A mobile-first productivity app that shows one item at a time. Five complete vis
 - Select a step to insert immediately after it. New steps otherwise append to their project.
 - Duplicate items from Do now, project steps, the master list, or completed history using the copy button. Unfinished project copies follow the original; completed project-item copies go to the end of the project's item list. Completed errands (including items from deleted projects) are copied to the end of the master queue. Each copy starts unfinished with a new ID and no recorded time, preserving the original. Copying a completed project's item reopens that project.
 - Delete a project from its card or detail page to remove the project and its unfinished items from the queue. Completed items stay in history with their original project name; putting one back restores it as an errand.
-- Completed item/project history, search, profile name/photo, and an optional master list hidden by default.
+- Completed item/project history, search, profile name/photo, and an optional master list hidden by default. Completed items show 25 per page, newest first; search covers the full history and starts at page 1.
 - Completed items have **Put back**, **Duplicate**, and a trash button. Duplicating keeps the original in completed history. The trash button asks before permanently removing an unwanted completed item, keeping other history, project status, and the active queue intact.
 - Put back a completed item to restore the original at the front of Do now. Its project reopens if needed, and other queued items keep their order.
 - JSON export/import with validation and replacement confirmation, list-specific CSV exports, and confirmed reset.

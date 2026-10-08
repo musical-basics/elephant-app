@@ -1431,6 +1431,30 @@ button {
 .completed-row:last-child {
   border-bottom: 0;
 }
+.completed-pagination {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 20px;
+  color: var(--muted);
+  font-size: 11px;
+}
+.completed-page-range {
+  margin: 0;
+}
+.completed-page-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.completed-page-controls .secondary-button {
+  min-height: 44px;
+  padding: 10px 12px;
+}
 .completed-check {
   width: 30px;
   height: 30px;
@@ -3651,7 +3675,6 @@ button {
     scroll-behavior: auto !important;
   }
 }
-
 
 .project-item.project-placeholder {
   padding: 14px;
