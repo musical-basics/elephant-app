@@ -1849,6 +1849,59 @@ button {
   background: #121b2466;
   backdrop-filter: blur(5px);
 }
+.sheet-resize {
+  display: none;
+}
+@media (min-width: 651px) {
+  .sheet.is-resizable[open] {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+  .sheet.is-resized {
+    max-width: none;
+    width: min(var(--sheet-width), calc(100vw - 32px));
+    height: min(var(--sheet-height), calc(100dvh - 48px));
+  }
+  .sheet.is-resizable .sheet-inner {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+  }
+  /* Flex items keep both margins; match the collapsed spacing of other sheets. */
+  .sheet.is-resizable .sheet-description + .sheet-form {
+    margin-top: 0;
+  }
+  .sheet-resize {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: absolute;
+    right: 6px;
+    bottom: 6px;
+    width: 26px;
+    height: 26px;
+    border-radius: 7px;
+    color: var(--muted);
+    cursor: nwse-resize;
+    touch-action: none;
+  }
+  .sheet-resize:hover,
+  .sheet-resize:focus-visible {
+    color: var(--ink);
+    background: var(--soft);
+  }
+  .sheet-resize svg {
+    width: 14px;
+    height: 14px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.5;
+    stroke-linecap: round;
+  }
+}
 .sheet-inner {
   padding: 30px;
 }

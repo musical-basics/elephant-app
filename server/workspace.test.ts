@@ -82,6 +82,7 @@ it("passes an explicit expected revision and ignores client-supplied workspace I
         p_workspace_id: "desktop",
         p_data: {
           ...createEmptyState(),
+          settings: { showMasterList: false, diarySort: "newest" },
           activityLog: [],
           focusMode: null,
           diary: [],
@@ -95,6 +96,7 @@ it("passes an explicit expected revision and ignores client-supplied workspace I
     request({
       data: {
         ...createEmptyState(),
+        settings: { showMasterList: false, diarySort: "newest" },
         activityLog: [],
         focusMode: null,
         diary: [],
@@ -229,7 +231,13 @@ it("preserves focus mode omitted by an older tab, and accepts an explicit stop",
     (
       await PUT(
         request({
-          data: { ...state, focusMode: null, activityLog: [], diary: [] },
+          data: {
+            ...state,
+            settings: { ...state.settings, diarySort: "newest" },
+            focusMode: null,
+            activityLog: [],
+            diary: [],
+          },
           expectedRevision: 5,
         }),
       )
@@ -248,6 +256,7 @@ it("preserves diary entries omitted by an older tab, and accepts an explicit emp
   ];
   const current = {
     ...createEmptyState(),
+    settings: { showMasterList: false, diarySort: "newest" as const },
     activityLog: [],
     focusMode: null,
     diary,
@@ -282,4 +291,37 @@ it("preserves diary entries omitted by an older tab, and accepts an explicit emp
       )
     ).status,
   ).toBe(200);
+});
+
+it("preserves a diary sort preference omitted by an older tab", async () => {
+  const saved = {
+    ...createEmptyState(),
+    settings: { showMasterList: true, diarySort: "oldest" },
+  };
+  const fetchMock = vi.fn(async (input, init) => {
+    if (String(input).endsWith("/elephant_read_desktop"))
+      return Response.json({ data: saved, revision: 4 });
+    expect(JSON.parse(init.body).p_data.settings).toEqual({
+      showMasterList: false,
+      diarySort: "oldest",
+    });
+    return Response.json({ revision: 5 });
+  });
+  vi.stubGlobal("fetch", fetchMock);
+  expect(
+    (
+      await PUT(
+        request({
+          data: {
+            ...createEmptyState(),
+            activityLog: [],
+            focusMode: null,
+            diary: [],
+          },
+          expectedRevision: 4,
+        }),
+      )
+    ).status,
+  ).toBe(200);
+  expect(fetchMock).toHaveBeenCalledTimes(2);
 });

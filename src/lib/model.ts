@@ -2,8 +2,8 @@ import { acknowledgeReminder, getActiveReminder, presentReminder } from './sched
 import type { ScheduledItem, ScheduledReminder } from './schedule';
 import { LOG_CATEGORIES, logCompletedTask } from './activityLog.js';
 import type { LogEntry, LogCategory } from './activityLog';
-import { MAX_DIARY_LENGTH } from './diary.js';
-import type { DiaryEntry } from './diary';
+import { DIARY_SORTS, MAX_DIARY_LENGTH } from './diary.js';
+import type { DiaryEntry, DiarySort } from './diary';
 
 export type ProjectStatus = 'active' | 'inactive' | 'completed';
 
@@ -41,7 +41,7 @@ export interface FocusModeState {
 export interface AppState {
   version: 1;
   profile: { name: string; avatarUrl?: string };
-  settings: { showMasterList: boolean };
+  settings: { showMasterList: boolean; diarySort?: DiarySort };
   projects: Project[];
   items: Item[];
   queue: QueueSlot[];
@@ -493,6 +493,7 @@ export function validateImport(input: unknown): AppState {
   const profile = record(data.profile, 'profile');
   const settings = record(data.settings, 'settings');
   if (typeof settings.showMasterList !== 'boolean') throw new Error('Invalid backup: showMasterList must be true or false.');
+  if (settings.diarySort !== undefined && !DIARY_SORTS.includes(settings.diarySort as DiarySort)) throw new Error('Invalid backup: diary sort must be newest or oldest.');
   const projects = array(data.projects, 'projects').map((value): Project => {
     const project = record(value, 'project');
     if (typeof project.status !== 'string' || !['active', 'inactive', 'completed'].includes(project.status)) throw new Error('Invalid backup: unknown project status.');
@@ -589,7 +590,7 @@ export function validateImport(input: unknown): AppState {
     return { id: string(entry.id, 'diary entry ID'), text, writtenAt: timestamp(entry.writtenAt, 'diary entry time'), createdAt: timestamp(entry.createdAt, 'diary entry createdAt'), ...(entry.updatedAt === undefined ? {} : { updatedAt: timestamp(entry.updatedAt, 'diary entry updatedAt') }) };
   });
   if (diary) unique(diary, 'diary entry');
-  const state: AppState = { version: 1, profile: { name: string(profile.name, 'profile name', true), ...(avatarUrl ? { avatarUrl } : {}) }, settings: { showMasterList: settings.showMasterList }, projects, items, queue, scheduledItems, activeReminder, ...(activityLog === undefined ? {} : { activityLog }), ...(focusMode === undefined ? {} : { focusMode }), ...(diary === undefined ? {} : { diary }) };
+  const state: AppState = { version: 1, profile: { name: string(profile.name, 'profile name', true), ...(avatarUrl ? { avatarUrl } : {}) }, settings: { showMasterList: settings.showMasterList, ...(settings.diarySort === undefined ? {} : { diarySort: settings.diarySort as DiarySort }) }, projects, items, queue, scheduledItems, activeReminder, ...(activityLog === undefined ? {} : { activityLog }), ...(focusMode === undefined ? {} : { focusMode }), ...(diary === undefined ? {} : { diary }) };
   const resolved = resolveQueue(state);
   if (resolved.length !== queue.length) throw new Error('Invalid backup: queue contains a missing, inactive, duplicate, completed, or excess task.');
   const queuedErrands = new Set(queue.flatMap((slot) => slot.kind === 'errand' ? [slot.itemId] : []));

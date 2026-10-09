@@ -11,6 +11,8 @@ export interface DiaryEntry {
   updatedAt?: string;
 }
 export type DiaryDraft = Pick<DiaryEntry, "text" | "writtenAt">;
+export const DIARY_SORTS = ["newest", "oldest"] as const;
+export type DiarySort = (typeof DIARY_SORTS)[number];
 
 export function saveDiaryEntry(
   state: AppState,
@@ -52,13 +54,26 @@ export function removeDiaryEntry(state: AppState, id: string): AppState {
   };
 }
 
-/** Newest first; ties keep a stable order. */
-export function sortDiary(entries: DiaryEntry[]): DiaryEntry[] {
+/** Ties keep a stable order, mirrored between the two directions. */
+export function sortDiary(
+  entries: DiaryEntry[],
+  order: DiarySort = "newest",
+): DiaryEntry[] {
+  const direction = order === "newest" ? -1 : 1;
   return [...entries].sort(
     (a, b) =>
-      Date.parse(b.writtenAt) - Date.parse(a.writtenAt) ||
-      b.id.localeCompare(a.id),
+      direction *
+      (Date.parse(a.writtenAt) - Date.parse(b.writtenAt) ||
+        a.id.localeCompare(b.id)),
   );
+}
+
+/** A synced preference, so every device shows the same order. */
+export function setDiarySort(state: AppState, diarySort: DiarySort): AppState {
+  if (!DIARY_SORTS.includes(diarySort)) throw new Error("Choose a sort order.");
+  return state.settings.diarySort === diarySort
+    ? state
+    : { ...state, settings: { ...state.settings, diarySort } };
 }
 
 /** Group by the viewer's local date, preserving the given order. */

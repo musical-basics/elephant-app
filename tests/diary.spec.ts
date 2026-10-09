@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 import type { Page } from "@playwright/test";
-import { createEmptyState } from "../src/lib/model";
+import { createEmptyState, validateImport } from "../src/lib/model";
 import type { AppState } from "../src/lib/model";
 import type { DiaryEntry } from "../src/lib/diary";
 
@@ -79,8 +79,8 @@ test("writes timestamped entries, shows them by calendar day and in a searchable
   await composer.press("Control+Enter");
   await expect(composer).toHaveValue("");
   await expect(agenda.locator(".diary-text")).toHaveText([
-    "Morning pages.\nA calm start.",
     "Lunch with Sam",
+    "Morning pages.\nA calm start.",
   ]);
 
   await page
@@ -237,4 +237,193 @@ test("the list paginates long diaries and every design fits a 320px phone", asyn
   await expect(
     page.getByRole("banner").getByRole("button", { name: "Diary" }),
   ).toHaveAttribute("aria-current", "page");
+});
+
+test("sort order applies to both views and is remembered in the workspace", async ({
+  page,
+}) => {
+  const note = (id: string, day: number, time: string): DiaryEntry => ({
+    id,
+    text: id,
+    writtenAt: iso(day, time),
+    createdAt: iso(day, time),
+  });
+  await seed(page, {
+    ...createEmptyState(),
+    diary: [
+      note("Breakfast", 8, "08:00"),
+      note("Evening", 8, "20:00"),
+      note("Last week", 1, "09:00"),
+      note("Lunch", 8, "12:00"),
+    ],
+  });
+  await page.goto("/#/still/diary");
+  const sort = page.getByLabel("Sort diary entries");
+  const agenda = page.getByRole("region", { name: "Diary entries" });
+  await expect(sort).toHaveValue("newest");
+  await expect(agenda.locator(".diary-text")).toHaveText([
+    "Evening",
+    "Lunch",
+    "Breakfast",
+  ]);
+  await sort.selectOption("oldest");
+  await expect(agenda.locator(".diary-text")).toHaveText([
+    "Breakfast",
+    "Lunch",
+    "Evening",
+  ]);
+  expect((await read(page)).settings).toEqual({
+    showMasterList: false,
+    diarySort: "oldest",
+  });
+  await page.getByRole("tab", { name: /List/ }).click();
+  await expect(page.locator(".diary-day h2")).toHaveText([
+    "Thursday, October 1, 2026",
+    "Thursday, October 8, 2026",
+  ]);
+  await expect(page.locator(".diary-text")).toHaveText([
+    "Last week",
+    "Breakfast",
+    "Lunch",
+    "Evening",
+  ]);
+
+  // A new entry lands at the end of an oldest-first list.
+  await page.clock.setFixedTime(new Date(stamp(8, "21:00")));
+  await page.getByLabel("New diary entry").fill("Night");
+  await page.getByRole("button", { name: "Save entry", exact: true }).click();
+  await expect(page.locator(".diary-text").last()).toHaveText("Night");
+
+  await page.reload();
+  await expect(page.getByLabel("Sort diary entries")).toHaveValue("oldest");
+  await expect(page.locator(".diary-text").first()).toHaveText("Last week");
+  await page.getByLabel("Sort diary entries").selectOption("newest");
+  await expect(page.locator(".diary-text")).toHaveText([
+    "Night",
+    "Evening",
+    "Lunch",
+    "Breakfast",
+    "Last week",
+  ]);
+  expect((await read(page)).settings.diarySort).toBe("newest");
+});
+
+test("diary entries and the sort preference save to the connected Supabase workspace", async ({
+  page,
+}) => {
+  const key = "d".repeat(43);
+  const writes: { data: AppState; expectedRevision: number }[] = [];
+  let revision = 7;
+  await page.route("**/api/workspace", async (route) => {
+    expect(route.request().headers()["x-elephant-key"]).toBe(key);
+    if (route.request().method() === "PUT") {
+      writes.push(route.request().postDataJSON());
+      return route.fulfill({ json: { revision: ++revision } });
+    }
+    return route.fulfill({
+      json: { workspace: { data: createEmptyState(), revision } },
+    });
+  });
+  await page.clock.setFixedTime(new Date(stamp(8, "12:00")));
+  await page.addInitScript((key) => {
+    localStorage.setItem("elephant.piano-studio.connection.v1", key);
+  }, key);
+  await page.goto("/#/still/diary");
+  await expect(page.getByText("Supabase workspace")).toBeVisible();
+  await page.getByLabel("New diary entry").fill("Synced thought");
+  await page.getByRole("button", { name: "Save entry", exact: true }).click();
+  await page.getByLabel("Sort diary entries").selectOption("oldest");
+  await expect
+    .poll(() => {
+      const last = writes.at(-1)?.data;
+      return last && [last.diary?.map((entry) => entry.text), last.settings];
+    })
+    .toEqual([
+      ["Synced thought"],
+      { showMasterList: false, diarySort: "oldest" },
+    ]);
+  const last = writes.at(-1)!;
+  expect(last.expectedRevision).toBe(revision - 1);
+  // The private API validates with the same rules before writing to Supabase.
+  expect(validateImport(last.data).diary).toEqual([
+    {
+      id: expect.any(String),
+      text: "Synced thought",
+      writtenAt: iso(8, "12:00"),
+      createdAt: iso(8, "12:00"),
+    },
+  ]);
+});
+
+test("the entry editor resizes by dragging its corner and remembers the size in this browser", async ({
+  page,
+}) => {
+  await seed(page, {
+    ...createEmptyState(),
+    diary: [
+      {
+        id: "long",
+        text: "A long entry.\n".repeat(40),
+        writtenAt: iso(8, "09:00"),
+        createdAt: iso(8, "09:00"),
+      },
+    ],
+  });
+  await page.goto("/#/still/diary");
+  const edit = page.getByRole("button", { name: /^Edit diary entry from / });
+  const dialog = page.getByRole("dialog");
+  const grip = dialog.getByRole("button", { name: "Resize dialog" });
+  const entry = dialog.getByLabel("Entry");
+  await edit.click();
+  const before = (await dialog.boundingBox())!;
+  const textBefore = (await entry.boundingBox())!;
+  expect(before.width).toBe(490);
+  const handle = (await grip.boundingBox())!;
+  const x = handle.x + handle.width / 2,
+    y = handle.y + handle.height / 2;
+  await page.mouse.move(x, y);
+  await page.mouse.down();
+  await page.mouse.move(x + 150, y + 100, { steps: 5 });
+  await page.mouse.up();
+  const after = (await dialog.boundingBox())!;
+  expect(after.width).toBeCloseTo(before.width + 300, 0);
+  expect(after.height).toBeCloseTo(before.height + 200, 0);
+  // The corner follows the pointer, and the entry grows to fill the dialog.
+  expect(after.x + after.width).toBeCloseTo(before.x + before.width + 150, 0);
+  expect((await entry.boundingBox())!.height).toBeCloseTo(
+    textBefore.height + 200,
+    0,
+  );
+
+  await grip.focus();
+  await page.keyboard.press("ArrowRight");
+  expect((await dialog.boundingBox())!.width).toBeCloseTo(after.width + 40, 0);
+  await dialog.getByRole("button", { name: "Cancel" }).click();
+  await page.reload();
+  await edit.click();
+  expect((await dialog.boundingBox())!.width).toBeCloseTo(after.width + 40, 0);
+  expect((await dialog.boundingBox())!.height).toBeCloseTo(after.height, 0);
+
+  // A huge drag stops at the window edge.
+  const corner = (await grip.boundingBox())!;
+  await page.mouse.move(corner.x + 5, corner.y + 5);
+  await page.mouse.down();
+  await page.mouse.move(corner.x + 2000, corner.y + 2000, { steps: 3 });
+  await page.mouse.up();
+  expect((await dialog.boundingBox())!.width).toBe(1440 - 32);
+  expect((await dialog.boundingBox())!.height).toBe(1080 - 48);
+
+  await grip.dblclick();
+  expect((await dialog.boundingBox())!.width).toBe(490);
+  await dialog.getByRole("button", { name: "Cancel" }).click();
+  await page.reload();
+  await edit.click();
+  expect((await dialog.boundingBox())!.width).toBe(490);
+  await dialog.getByRole("button", { name: "Cancel" }).click();
+
+  // Phones keep the full-width bottom sheet.
+  await page.setViewportSize({ width: 390, height: 844 });
+  await edit.click();
+  await expect(grip).toBeHidden();
+  expect((await dialog.boundingBox())!.width).toBe(390);
 });

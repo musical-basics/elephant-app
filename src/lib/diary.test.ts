@@ -6,9 +6,10 @@ import {
   removeDiaryEntry,
   saveDiaryEntry,
   searchDiary,
+  setDiarySort,
   sortDiary,
 } from "./diary";
-import type { DiaryEntry } from "./diary";
+import type { DiaryEntry, DiarySort } from "./diary";
 const iso = (hour: number, minute = 0, day = 8) =>
   new Date(2026, 9, day, hour, minute).toISOString();
 const entry = (id: string, writtenAt: string, text = id): DiaryEntry => ({
@@ -107,6 +108,41 @@ describe("diary", () => {
       searchDiary(entries, "walk coffee").map((value) => value.id),
     ).toEqual(["c"]);
     expect(searchDiary(entries, "  ")).toBe(entries);
+  });
+
+  it("sorts in either direction and stores the preference in settings", () => {
+    const entries = [
+      entry("b", iso(9)),
+      entry("a", iso(9)),
+      entry("c", iso(7)),
+    ];
+    expect(sortDiary(entries, "oldest").map((value) => value.id)).toEqual([
+      "c",
+      "a",
+      "b",
+    ]);
+    expect(sortDiary(entries, "newest").map((value) => value.id)).toEqual([
+      "b",
+      "a",
+      "c",
+    ]);
+    const state = createEmptyState();
+    const sorted = setDiarySort(state, "oldest");
+    expect(sorted.settings).toEqual({
+      showMasterList: false,
+      diarySort: "oldest",
+    });
+    expect(setDiarySort(sorted, "oldest")).toBe(sorted);
+    expect(() => setDiarySort(state, "sideways" as DiarySort)).toThrow(
+      "sort order",
+    );
+    expect(validateImport(JSON.parse(JSON.stringify(sorted)))).toEqual(sorted);
+    expect(() =>
+      validateImport({
+        ...state,
+        settings: { showMasterList: false, diarySort: "sideways" },
+      }),
+    ).toThrow("diary sort");
   });
 
   it("roundtrips through backups and rejects malformed entries", () => {

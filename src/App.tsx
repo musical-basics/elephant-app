@@ -57,7 +57,7 @@ import ActivityLog from "./components/ActivityLog";
 import Diary from "./components/Diary";
 import { ConnectAnotherDevice } from "./components/WorkspaceConnection";
 import { saveLogEntry, removeLogEntry } from "./lib/activityLog";
-import { saveDiaryEntry, removeDiaryEntry } from "./lib/diary";
+import { saveDiaryEntry, removeDiaryEntry, setDiarySort } from "./lib/diary";
 import FocusTimer from "./components/FocusTimer";
 import ProjectFocus from "./components/ProjectFocus";
 import Calendar from "./components/Calendar";
@@ -1985,6 +1985,10 @@ export default function App({
                   view={projectId === "list" ? "list" : "calendar"}
                   onView={(view) =>
                     navigate("diary", view === "list" ? "list" : undefined)
+                  }
+                  sort={state.settings.diarySort ?? "newest"}
+                  onSort={(sort) =>
+                    update((current) => setDiarySort(current, sort))
                   }
                   onSave={(draft, id) =>
                     update((current) => saveDiaryEntry(current, draft, id))

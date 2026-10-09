@@ -5,6 +5,7 @@ import {
   ArrowRight,
   CalendarDays,
   Check,
+  ChevronDown,
   ChevronLeft,
   ChevronRight,
   List,
@@ -21,7 +22,7 @@ import {
   searchDiary,
   sortDiary,
 } from "../lib/diary";
-import type { DiaryDraft, DiaryEntry } from "../lib/diary";
+import type { DiaryDraft, DiaryEntry, DiarySort } from "../lib/diary";
 import { localDateKey } from "../lib/schedule";
 import "./Calendar.css";
 import "./Diary.css";
@@ -81,6 +82,8 @@ type Props = {
   entries: DiaryEntry[];
   view: DiaryView;
   onView: (view: DiaryView) => void;
+  sort: DiarySort;
+  onSort: (sort: DiarySort) => void;
   onSave: (draft: DiaryDraft, id?: string) => void;
   onDelete: (id: string) => void;
 };
@@ -89,6 +92,8 @@ export default function Diary({
   entries,
   view,
   onView,
+  sort,
+  onSort,
   onSave,
   onDelete,
 }: Props) {
@@ -106,7 +111,7 @@ export default function Diary({
   const [query, setQuery] = useState("");
   const [page, setPage] = useState(1);
   const today = localDateKey(new Date());
-  const sorted = sortDiary(entries);
+  const sorted = sortDiary(entries, sort);
 
   useEffect(() => {
     // An unsent entry survives leaving the page; it is never synced.
@@ -131,7 +136,8 @@ export default function Diary({
       setError("");
       setNotice(`Entry saved at ${time(writtenAt)}.`);
       showDay(localDateKey(new Date(writtenAt)));
-      setPage(1);
+      // Show the page the new entry lands on; the last page clamps below.
+      setPage(sort === "newest" ? 1 : Number.MAX_SAFE_INTEGER);
     } catch (failure) {
       setError(
         failure instanceof Error
@@ -155,9 +161,9 @@ export default function Diary({
         1 - month.getDay() + index,
       ),
   );
-  const dayEntries = sorted
-    .filter((entry) => localDateKey(new Date(entry.writtenAt)) === selectedDate)
-    .reverse();
+  const dayEntries = sorted.filter(
+    (entry) => localDateKey(new Date(entry.writtenAt)) === selectedDate,
+  );
 
   const matching = searchDiary(sorted, query);
   const pageCount = Math.max(1, Math.ceil(matching.length / PAGE_SIZE));
@@ -246,20 +252,37 @@ export default function Diary({
             List<span>{entries.length}</span>
           </button>
         </div>
-        {view === "list" && (
-          <label className="search-box">
-            <Search size={17} />
-            <input
-              aria-label="Search diary entries"
-              placeholder="Search your diary"
-              value={query}
+        <div className="diary-toolbar-controls">
+          <label className="sort-control">
+            Sort
+            <select
+              aria-label="Sort diary entries"
+              value={sort}
               onChange={(event) => {
-                setQuery(event.target.value);
+                onSort(event.target.value as DiarySort);
                 setPage(1);
               }}
-            />
+            >
+              <option value="newest">Newest first</option>
+              <option value="oldest">Oldest first</option>
+            </select>
+            <ChevronDown size={14} />
           </label>
-        )}
+          {view === "list" && (
+            <label className="search-box">
+              <Search size={17} />
+              <input
+                aria-label="Search diary entries"
+                placeholder="Search your diary"
+                value={query}
+                onChange={(event) => {
+                  setQuery(event.target.value);
+                  setPage(1);
+                }}
+              />
+            </label>
+          )}
+        </div>
       </div>
 
       {view === "calendar" ? (
@@ -520,9 +543,10 @@ function DiaryEditor({
       title={entry ? "Edit diary entry" : "New diary entry"}
       description="Your words, kept with the date and time below."
       onClose={onClose}
+      resizeKey="elephant.diary.editor-size.v1"
     >
       <form
-        className="sheet-form"
+        className="sheet-form diary-editor-form"
         onSubmit={(event) => {
           event.preventDefault();
           const fields = new FormData(event.currentTarget);
@@ -548,7 +572,7 @@ function DiaryEditor({
           }
         }}
       >
-        <label>
+        <label className="diary-editor-text">
           Entry
           <textarea
             name="text"

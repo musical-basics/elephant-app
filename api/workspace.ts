@@ -96,17 +96,32 @@ export async function PUT(request: Request) {
     const missing = (["activityLog", "focusMode", "diary"] as const).filter(
       (field) => body.data[field] === undefined,
     );
-    if (missing.length && body.expectedRevision !== null) {
+    const missingSettings = (["diarySort"] as const).filter(
+      (field) => body.data.settings[field] === undefined,
+    );
+    if (
+      (missing.length || missingSettings.length) &&
+      body.expectedRevision !== null
+    ) {
       const current = await client.rpc("elephant_read_desktop", {
         p_workspace_id: process.env.ELEPHANT_WORKSPACE_ID || "desktop",
       });
       if (current.error) throw current.error;
+      const saved = current.data?.data;
       const preserved = Object.fromEntries(
         missing
-          .filter((field) => current.data?.data?.[field] !== undefined)
-          .map((field) => [field, current.data.data[field]]),
+          .filter((field) => saved?.[field] !== undefined)
+          .map((field) => [field, saved[field]]),
       );
-      body.data = validateImport({ ...body.data, ...preserved });
+      const settings = {
+        ...body.data.settings,
+        ...Object.fromEntries(
+          missingSettings
+            .filter((field) => saved?.settings?.[field] !== undefined)
+            .map((field) => [field, saved.settings[field]]),
+        ),
+      };
+      body.data = validateImport({ ...body.data, ...preserved, settings });
     }
     const { data, error } = await client.rpc("elephant_save_desktop", {
       p_workspace_id: process.env.ELEPHANT_WORKSPACE_ID || "desktop",

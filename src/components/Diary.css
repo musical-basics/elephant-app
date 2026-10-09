@@ -55,6 +55,11 @@
 .diary-toolbar .tabs button svg {
   flex-shrink: 0;
 }
+.diary-toolbar-controls {
+  display: flex;
+  align-items: center;
+  gap: 22px;
+}
 .diary-notes {
   display: flex;
   flex-direction: column;
@@ -121,6 +126,24 @@
   border-radius: var(--radius);
   background: var(--surface);
 }
+/* In a resized editor the entry grows to fill the dialog. */
+@media (min-width: 651px) {
+  .is-resizable .diary-editor-form,
+  .is-resizable .diary-editor-text {
+    flex: 1 1 auto;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+  }
+  .is-resizable .diary-editor-text textarea {
+    flex: 1 1 auto;
+    min-height: 120px;
+    resize: none;
+  }
+  .is-resizable .diary-editor-form .sheet-actions {
+    margin-top: 4px;
+  }
+}
 .diary-delete-confirm {
   display: flex;
   flex-wrap: wrap;
@@ -140,9 +163,20 @@
   .diary-composer textarea {
     font-size: 16px;
   }
-  .diary-toolbar {
+  /* styles.css loads later, so these outrank its shared toolbar rules. */
+  .list-toolbar.diary-toolbar {
     flex-direction: column;
     align-items: stretch;
+  }
+  .diary-toolbar .diary-toolbar-controls {
+    justify-content: space-between;
+    gap: 14px;
+  }
+  .diary-toolbar .diary-toolbar-controls .search-box {
+    order: -1;
+    flex: 1 1 auto;
+    width: auto;
+    min-width: 0;
   }
   .diary-day {
     padding: 4px 16px;
