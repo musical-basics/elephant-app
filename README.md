@@ -48,6 +48,8 @@ A mobile-first productivity app that shows one item at a time. Five complete vis
 
 To save a full backup, open **Settings → Download backup** (or **Backups & exports → Download JSON backup**). The timestamped `.json` includes all projects, items, queue order, completion history, logged activities, profile/photo, and settings. Keep it outside the app. **Restore JSON backup** validates a saved file and asks before replacing the current workspace; it also supports recovery when browser data is unreadable.
 
+Synced workspaces also have a daily database backup at **03:30 UTC**, saved to the private Cloudflare R2 bucket `elephant-backups`. It includes revision history and schema metadata, verifies every file, and retains daily, weekly, monthly, and yearly copies. See [backup operations and recovery](docs/backups.md).
+
 Priority is omitted. All projects use the same insertion threshold of **1/3**, applying the workbook's strict ready-score comparison. Empty queues seed one slot per active project. These decisions and the source workbook's inconsistent manual counts are documented in [docs/CALCULATIONS.md](docs/CALCULATIONS.md).
 
 Unconnected local workspaces start with example projects. Private desktop links reuse existing browser data or load the shared Supabase copy; a new private workspace starts empty. Account workspaces also start empty. All five designs edit the same workspace. Use Settings → Reset workspace for a fresh local start, or export/import to explicitly transfer local work into your account.
@@ -79,7 +81,7 @@ See [docs/SUPABASE.md](docs/SUPABASE.md) for schema, email redirects, environmen
 
 Vercel uses the Vite preset, `npm run build`, and `dist`. `vercel.json` provides SPA fallback routing and basic response headers. The supplied Supabase project is shared with another app, so its existing authentication settings must be preserved when adding Elephant's redirect URLs.
 
-The app has no service worker or automatic conflict merging. Offline edits need an already-open page; export is the durable backup mechanism. Confirm actual email delivery with the project's email provider before inviting users.
+The app has no service worker or automatic conflict merging. Offline edits need an already-open page; download a JSON backup to protect edits that have not synced. Daily R2 backups protect the synced database. Confirm actual sign-in email delivery with the project's email provider before inviting users.
 
 ## Source materials
 

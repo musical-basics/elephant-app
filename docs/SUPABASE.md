@@ -24,6 +24,10 @@ The connection screen runs separately from the workspace hook. It removes the cr
 
 The private link is an access credential. Keep it out of source, public pages, telemetry, and backups. The QR is generated locally without sending it to a QR service. Once connected, the phone uses the same private desktop APIs and normal revision-checked saving. Email sign-in is unnecessary for this workspace.
 
+## Automated database backups
+
+Daily external database backups use the restricted `public.elephant_backup_snapshot()` RPC from `supabase/migrations/003_backups.sql`. Only the server's service role can execute it. The private schema stays outside the Data API, and the hosted backup never needs a Supabase personal token. See [backup storage, retention, and recovery](backups.md).
+
 ## Optional account workspaces
 
 1. Choose or create the Supabase project that should own Elephant data.
