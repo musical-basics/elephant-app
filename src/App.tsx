@@ -33,6 +33,7 @@ import {
   LoaderCircle,
   LogOut,
   Moon,
+  NotebookPen,
   Pencil,
   Plus,
   RotateCcw,
@@ -53,8 +54,10 @@ import CompletionCelebration from "./components/CompletionCelebration";
 import ProjectSearch from "./components/ProjectSearch";
 import Analytics from "./components/Analytics";
 import ActivityLog from "./components/ActivityLog";
+import Diary from "./components/Diary";
 import { ConnectAnotherDevice } from "./components/WorkspaceConnection";
 import { saveLogEntry, removeLogEntry } from "./lib/activityLog";
+import { saveDiaryEntry, removeDiaryEntry } from "./lib/diary";
 import FocusTimer from "./components/FocusTimer";
 import ProjectFocus from "./components/ProjectFocus";
 import Calendar from "./components/Calendar";
@@ -114,6 +117,7 @@ type Screen =
   | "analytics"
   | "calendar"
   | "log"
+  | "diary"
   | "settings"
   | "queue";
 type Route = { design: DesignId | null; screen: Screen; projectId?: string };
@@ -162,6 +166,7 @@ function readRoute(): Route {
       "analytics",
       "calendar",
       "log",
+      "diary",
       "settings",
       "queue",
     ].includes(screen)
@@ -555,12 +560,24 @@ export default function App({
       />
     );
 
-  const links: { screen: Screen; label: string; icon: ReactNode }[] = [
+  const links: {
+    screen: Screen;
+    label: string;
+    icon: ReactNode;
+    // Mobile reaches these from the header; the bottom bar fits seven 44px targets.
+    desktopOnly?: true;
+  }[] = [
     { screen: "home", label: "Home", icon: <Home size={20} /> },
     { screen: "focus", label: "Do now", icon: <Circle size={20} /> },
     { screen: "projects-home", label: "Projects", icon: <Layers size={20} /> },
     { screen: "calendar", label: "Calendar", icon: <CalendarDays size={20} /> },
     { screen: "log", label: "Log", icon: <ClipboardList size={20} /> },
+    {
+      screen: "diary",
+      label: "Diary",
+      icon: <NotebookPen size={20} />,
+      desktopOnly: true,
+    },
     {
       screen: "completed",
       label: "Completed",
@@ -573,22 +590,24 @@ export default function App({
       aria-label={mobile ? "Mobile navigation" : "Main navigation"}
       className={mobile ? "bottom-nav" : "side-nav"}
     >
-      {links.map((link) => (
-        <button
-          key={link.screen}
-          onClick={() => navigate(link.screen)}
-          aria-current={
-            screen === link.screen ||
-            ((screen === "project" || screen === "projects") &&
-              link.screen === "projects-home")
-              ? "page"
-              : undefined
-          }
-        >
-          {link.icon}
-          <span>{link.label}</span>
-        </button>
-      ))}
+      {links
+        .filter((link) => !mobile || !link.desktopOnly)
+        .map((link) => (
+          <button
+            key={link.screen}
+            onClick={() => navigate(link.screen)}
+            aria-current={
+              screen === link.screen ||
+              ((screen === "project" || screen === "projects") &&
+                link.screen === "projects-home")
+                ? "page"
+                : undefined
+            }
+          >
+            {link.icon}
+            <span>{link.label}</span>
+          </button>
+        ))}
     </nav>
   );
 
@@ -683,6 +702,14 @@ export default function App({
                     ? "Personal space"
                     : "Local workspace"}
               </span>
+              <button
+                className="icon-button mobile-diary"
+                aria-label="Diary"
+                aria-current={screen === "diary" ? "page" : undefined}
+                onClick={() => navigate("diary")}
+              >
+                <NotebookPen size={20} />
+              </button>
               <button
                 className="icon-button mobile-settings"
                 aria-label="Settings"
@@ -920,6 +947,19 @@ export default function App({
                         <span>
                           <strong>Little wins</strong>
                           <small>Your completed items</small>
+                        </span>
+                        <ArrowUpRight size={20} />
+                      </button>
+                      <button
+                        className="home-link"
+                        onClick={() => navigate("diary")}
+                      >
+                        <span className="link-icon">
+                          <NotebookPen size={21} />
+                        </span>
+                        <span>
+                          <strong>Diary</strong>
+                          <small>A few words for today</small>
                         </span>
                         <ArrowUpRight size={20} />
                       </button>
@@ -1939,6 +1979,22 @@ export default function App({
                 />
               )}
 
+              {screen === "diary" && (
+                <Diary
+                  entries={state.diary ?? []}
+                  view={projectId === "list" ? "list" : "calendar"}
+                  onView={(view) =>
+                    navigate("diary", view === "list" ? "list" : undefined)
+                  }
+                  onSave={(draft, id) =>
+                    update((current) => saveDiaryEntry(current, draft, id))
+                  }
+                  onDelete={(id) =>
+                    update((current) => removeDiaryEntry(current, id))
+                  }
+                />
+              )}
+
               {screen === "queue" && (
                 <>
                   <PageHeading
@@ -2560,9 +2616,9 @@ export default function App({
                   : modal.kind === "project"
                     ? "Give your project a name. We’ll take it one step at a time."
                     : modal.kind === "import"
-                      ? `This backup has ${modal.data.projects.length} projects, ${modal.data.items.length} items, ${modal.data.scheduledItems.length} scheduled items, and ${modal.data.activityLog?.length ?? 0} logged activities. It will replace all current workspace data.`
+                      ? `This backup has ${modal.data.projects.length} projects, ${modal.data.items.length} items, ${modal.data.scheduledItems.length} scheduled items, ${modal.data.activityLog?.length ?? 0} logged activities, and ${modal.data.diary?.length ?? 0} diary entries. It will replace all current workspace data.`
                       : modal.kind === "reset"
-                        ? "This deletes all items, projects, logged activities, and history in this workspace. Export a backup first if you want to keep them."
+                        ? "This deletes all items, projects, logged activities, diary entries, and history in this workspace. Export a backup first if you want to keep them."
                         : modal.kind === "delete"
                           ? modal.item.completedAt
                             ? "This permanently removes the item from your completed history. This can’t be undone."
@@ -2933,6 +2989,7 @@ export default function App({
                     ...empty,
                     activityLog: [],
                     focusMode: null,
+                    diary: [],
                     profile: state.profile,
                     settings: state.settings,
                   });
@@ -2971,6 +3028,7 @@ export default function App({
                         ...modal.data,
                         activityLog: modal.data.activityLog ?? [],
                         focusMode: modal.data.focusMode ?? null,
+                        diary: modal.data.diary ?? [],
                       });
                       setModal(null);
                       navigate("home");

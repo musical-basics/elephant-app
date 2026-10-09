@@ -89,3 +89,7 @@ The optional `activityLog` array lives in the existing workspace JSON; no new ta
 ## Focus mode
 
 The optional `focusMode` JSON field stores the selected active project, `between` (0–3), and the number of other master-list tasks still to complete before returning. It is saved atomically with task completion and its activity log, with the existing revision checks and device refresh behavior. It does not reorder master-list slots. A null value explicitly ends focus; old backups without the field still load, and restoring one through the UI clears focus. Invalid spacing/progress is rejected; a no-longer-active or empty project clears the selection. Reset workspace clears focus too. The private API preserves focus data omitted by an older client, using the same guarded read and expected revision as log preservation.
+
+## Diary
+
+The optional `diary` array lives in the existing workspace JSON; no new table or schema migration is required. Each entry stores `id`, `text` (1–20,000 characters), `writtenAt`, `createdAt`, and an optional `updatedAt`, all as UTC timestamps rendered in local time. Entries roundtrip through backups; restoring a legacy backup or Reset workspace clears them explicitly. The private workspace API preserves diary entries omitted by an older client, using the same guarded read and expected revision as logs and focus mode. An explicit empty array clears the diary. Unsent drafts stay in the browser's local storage and are never synced.

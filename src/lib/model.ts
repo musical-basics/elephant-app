@@ -2,6 +2,8 @@ import { acknowledgeReminder, getActiveReminder, presentReminder } from './sched
 import type { ScheduledItem, ScheduledReminder } from './schedule';
 import { LOG_CATEGORIES, logCompletedTask } from './activityLog.js';
 import type { LogEntry, LogCategory } from './activityLog';
+import { MAX_DIARY_LENGTH } from './diary.js';
+import type { DiaryEntry } from './diary';
 
 export type ProjectStatus = 'active' | 'inactive' | 'completed';
 
@@ -47,6 +49,7 @@ export interface AppState {
   activeReminder: ScheduledReminder | null;
   activityLog?: LogEntry[];
   focusMode?: FocusModeState | null;
+  diary?: DiaryEntry[];
 }
 
 export interface ResolvedQueueEntry {
@@ -579,7 +582,14 @@ export function validateImport(input: unknown): AppState {
     }
     focusMode = { projectId, between: focus.between as FocusModeState['between'], remaining: focus.remaining as number };
   }
-  const state: AppState = { version: 1, profile: { name: string(profile.name, 'profile name', true), ...(avatarUrl ? { avatarUrl } : {}) }, settings: { showMasterList: settings.showMasterList }, projects, items, queue, scheduledItems, activeReminder, ...(activityLog === undefined ? {} : { activityLog }), ...(focusMode === undefined ? {} : { focusMode }) };
+  const diary = data.diary === undefined ? undefined : array(data.diary, 'diary').map((value): DiaryEntry => {
+    const entry = record(value, 'diary entry');
+    const text = string(entry.text, 'diary text');
+    if (text.length > MAX_DIARY_LENGTH) throw new Error('Invalid backup: a diary entry is too long.');
+    return { id: string(entry.id, 'diary entry ID'), text, writtenAt: timestamp(entry.writtenAt, 'diary entry time'), createdAt: timestamp(entry.createdAt, 'diary entry createdAt'), ...(entry.updatedAt === undefined ? {} : { updatedAt: timestamp(entry.updatedAt, 'diary entry updatedAt') }) };
+  });
+  if (diary) unique(diary, 'diary entry');
+  const state: AppState = { version: 1, profile: { name: string(profile.name, 'profile name', true), ...(avatarUrl ? { avatarUrl } : {}) }, settings: { showMasterList: settings.showMasterList }, projects, items, queue, scheduledItems, activeReminder, ...(activityLog === undefined ? {} : { activityLog }), ...(focusMode === undefined ? {} : { focusMode }), ...(diary === undefined ? {} : { diary }) };
   const resolved = resolveQueue(state);
   if (resolved.length !== queue.length) throw new Error('Invalid backup: queue contains a missing, inactive, duplicate, completed, or excess task.');
   const queuedErrands = new Set(queue.flatMap((slot) => slot.kind === 'errand' ? [slot.itemId] : []));

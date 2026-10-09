@@ -566,6 +566,7 @@ test("master queue stays hidden until enabled, JSON export and guarded reset/imp
     ...original,
     activityLog: original.activityLog ?? [],
     focusMode: original.focusMode ?? null,
+    diary: original.diary ?? [],
   });
 });
 
@@ -629,6 +630,7 @@ test("a downloaded JSON backup restores a corrupted browser workspace", async ({
     ...original,
     activityLog: original.activityLog ?? [],
     focusMode: original.focusMode ?? null,
+    diary: original.diary ?? [],
   });
   await page.reload();
   await expect(
@@ -643,6 +645,7 @@ test("a downloaded JSON backup restores a corrupted browser workspace", async ({
     ...original,
     activityLog: original.activityLog ?? [],
     focusMode: original.focusMode ?? null,
+    diary: original.diary ?? [],
   });
 });
 

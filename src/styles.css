@@ -405,6 +405,7 @@ button {
 }
 .mobile-wordmark,
 .mobile-settings,
+.mobile-diary,
 .bottom-nav {
   display: none;
 }
@@ -2668,7 +2669,8 @@ button {
     letter-spacing: -1.4px;
     gap: 8px;
   }
-  .mobile-settings {
+  .mobile-settings,
+  .mobile-diary {
     display: inline-flex;
     min-width: 37px;
     min-height: 40px;

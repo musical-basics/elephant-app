@@ -80,7 +80,12 @@ it("passes an explicit expected revision and ignores client-supplied workspace I
       expect(String(input)).toContain("/rpc/elephant_save_desktop");
       expect(JSON.parse(init.body)).toEqual({
         p_workspace_id: "desktop",
-        p_data: { ...createEmptyState(), activityLog: [], focusMode: null },
+        p_data: {
+          ...createEmptyState(),
+          activityLog: [],
+          focusMode: null,
+          diary: [],
+        },
         p_expected_revision: 4,
       });
       return Response.json({ revision: 5 });
@@ -88,7 +93,12 @@ it("passes an explicit expected revision and ignores client-supplied workspace I
   );
   const response = await PUT(
     request({
-      data: { ...createEmptyState(), activityLog: [], focusMode: null },
+      data: {
+        ...createEmptyState(),
+        activityLog: [],
+        focusMode: null,
+        diary: [],
+      },
       expectedRevision: 4,
       workspaceId: "someone-else",
     }),
@@ -219,9 +229,56 @@ it("preserves focus mode omitted by an older tab, and accepts an explicit stop",
     (
       await PUT(
         request({
-          data: { ...state, focusMode: null, activityLog: [] },
+          data: { ...state, focusMode: null, activityLog: [], diary: [] },
           expectedRevision: 5,
         }),
+      )
+    ).status,
+  ).toBe(200);
+});
+
+it("preserves diary entries omitted by an older tab, and accepts an explicit empty diary", async () => {
+  const diary = [
+    {
+      id: "note",
+      text: "A quiet morning.",
+      writtenAt: "2026-10-08T12:00:00.000Z",
+      createdAt: "2026-10-08T12:00:00.000Z",
+    },
+  ];
+  const current = {
+    ...createEmptyState(),
+    activityLog: [],
+    focusMode: null,
+    diary,
+  };
+  const fetchMock = vi.fn(async (input, init) => {
+    if (String(input).endsWith("/elephant_read_desktop"))
+      return Response.json({ data: current, revision: 4 });
+    expect(JSON.parse(init.body)).toMatchObject({
+      p_data: { diary },
+      p_expected_revision: 4,
+    });
+    return Response.json({ revision: 5 });
+  });
+  vi.stubGlobal("fetch", fetchMock);
+  const { diary: _omitted, ...legacy } = current;
+  expect(
+    (await PUT(request({ data: legacy, expectedRevision: 4 }))).status,
+  ).toBe(200);
+  expect(fetchMock).toHaveBeenCalledTimes(2);
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (input, init) => {
+      expect(String(input)).toContain("/elephant_save_desktop");
+      expect(JSON.parse(init.body).p_data.diary).toEqual([]);
+      return Response.json({ revision: 6 });
+    }),
+  );
+  expect(
+    (
+      await PUT(
+        request({ data: { ...current, diary: [] }, expectedRevision: 5 }),
       )
     ).status,
   ).toBe(200);
