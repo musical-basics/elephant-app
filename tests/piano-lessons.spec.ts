@@ -415,3 +415,92 @@ test("private connection also works with no saved Elephant account", async ({
   await expect(page.locator(".is-lesson")).toHaveCount(1);
   expect(authRequests).toBe(0);
 });
+
+test("a started lesson can be completed through Piano Studio from the calendar", async ({
+  page,
+}) => {
+  const feed = await setup(page);
+  const started: PianoLesson = {
+    ...lesson,
+    scheduledAt: "2026-10-07T15:00:00Z",
+    endsAt: "2026-10-07T15:45:00Z",
+  };
+  const other: PianoLesson = {
+    ...started,
+    id: "piano-studio:2",
+    title: "Piano lesson · Second Student",
+  };
+  feed.lessons = [started, other];
+  const posts: { body: unknown; authorization?: string }[] = [];
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => (release = resolve));
+  await page.route("**/api/piano-lessons", async (route) => {
+    const body = route.request().postDataJSON();
+    posts.push({
+      body,
+      authorization: route.request().headers().authorization,
+    });
+    if (body.lessonId === other.id)
+      return route.fulfill({
+        status: 503,
+        json: {
+          error: "Completing lessons from Elephant isn’t connected yet.",
+        },
+      });
+    await gate;
+    feed.lessons = [{ ...started, status: "completed" }, other];
+    await route.fulfill({
+      json: {
+        lesson: { ...started, status: "completed" },
+        alreadyCompleted: false,
+        creditDeducted: true,
+        previousCredits: 5,
+        newCredits: 4,
+        nextLessonDate: "2026-10-14",
+      },
+    });
+  });
+  await page.goto(`${baseUrl}/#/still/calendar`);
+  const row = page.locator(".schedule-row.is-lesson").first();
+  await row.getByRole("button", { name: `Complete ${started.title}` }).click();
+  const dialog = page.getByRole("dialog");
+  await expect(
+    dialog.getByRole("heading", { name: "Complete this lesson?" }),
+  ).toBeVisible();
+  await expect(dialog).toContainText("deducts 1 credit");
+  await dialog
+    .getByLabel("Lesson notes for Test Student (optional)")
+    .fill("Scales, then the Chopin nocturne.");
+  await dialog.getByRole("button", { name: "Complete lesson" }).click();
+  await expect(dialog.getByRole("button", { name: "Logging…" })).toBeDisabled();
+  await expect(dialog.getByRole("button", { name: "Cancel" })).toBeDisabled();
+  await page.keyboard.press("Escape");
+  await expect(dialog).toBeVisible();
+  release();
+  await expect(dialog).toHaveCount(0);
+  await expect(
+    page.getByText(
+      "Lesson logged in Piano Studio. Credits 5 → 4. Next lesson booked for Wed, Oct 14.",
+    ),
+  ).toBeVisible();
+  await expect(row).toHaveClass(/is-completed/);
+  await expect(row).toContainText("Piano Studio · Completed");
+  await expect(row.getByRole("button")).toHaveCount(0);
+  expect(posts[0]).toEqual({
+    body: { lessonId: started.id, notes: "Scales, then the Chopin nocturne." },
+    authorization: expect.stringMatching(/^Bearer /),
+  });
+
+  // A failure keeps the sheet open with Piano Studio's explanation.
+  await page.getByRole("button", { name: `Complete ${other.title}` }).click();
+  await dialog.getByRole("button", { name: "Complete lesson" }).click();
+  await expect(dialog.getByRole("alert")).toHaveText(
+    "Completing lessons from Elephant isn’t connected yet.",
+  );
+  await expect(
+    dialog.getByRole("button", { name: "Complete lesson" }),
+  ).toBeEnabled();
+  await dialog.getByRole("button", { name: "Cancel" }).click();
+  await expect(dialog).toHaveCount(0);
+  expect(posts).toHaveLength(2);
+});

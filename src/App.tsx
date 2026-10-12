@@ -1204,6 +1204,7 @@ export default function App({
                   onDelete={(item) =>
                     setModal({ kind: "deleteScheduled", item })
                   }
+                  onNotice={setToast}
                   onToggle={(item) => {
                     const changed = mutate(
                       (s) => toggleScheduledItem(s, item.id),

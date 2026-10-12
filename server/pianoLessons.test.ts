@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { GET } from "../api/piano-lessons";
+import { GET, POST } from "../api/piano-lessons";
 import { calendarLesson, studioTimestamp } from "./pianoLessons";
 import { createHash } from "node:crypto";
 
@@ -266,4 +266,196 @@ describe("Pacific studio times", () => {
       status: "completed",
     });
   });
+});
+
+describe("completing a lesson through Piano Studio", () => {
+  const completeUrl = "https://elephant.test/api/piano-lessons";
+  const complete = (body: unknown, headers: Record<string, string> = {}) =>
+    POST(
+      new Request(completeUrl, {
+        method: "POST",
+        headers: { "X-Piano-Key": localKey, ...headers },
+        body: typeof body === "string" ? body : JSON.stringify(body),
+      }),
+    );
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-10-08T00:00:00Z"));
+    vi.stubEnv("PIANO_STUDIO_AGENT_SECRET", "agent-secret");
+    vi.stubEnv("PIANO_STUDIO_APP_URL", "https://studio-app.test/");
+  });
+  afterEach(() => vi.useRealTimers());
+
+  function mockStudio(
+    lesson:
+      | (Partial<Omit<typeof row, "status">> & {
+          status?: string;
+          notes?: string | null;
+        })
+      | null = {},
+    agent: () => Response = () =>
+      Response.json({
+        success: true,
+        credit_deducted: true,
+        previous_credits: 5,
+        new_credits: 4,
+        next_lesson: { date: "2026-10-14" },
+      }),
+  ) {
+    const logs: { url: string; init: RequestInit }[] = [];
+    const lookups: URL[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = new URL(String(input));
+        if (url.hostname === "studio-db.test") {
+          lookups.push(url);
+          return Response.json(
+            lesson ? [{ ...row, notes: "Earlier notes", ...lesson }] : [],
+          );
+        }
+        logs.push({ url: String(input), init: init! });
+        return agent();
+      }),
+    );
+    return { logs, lookups };
+  }
+
+  it("logs a started lesson with Piano Studio's agent API, keeping existing notes", async () => {
+    const { logs, lookups } = mockStudio();
+    const response = await complete({ lessonId: "piano-studio:lesson-1" });
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({
+      lesson: expect.objectContaining({
+        id: "piano-studio:lesson-1",
+        status: "completed",
+      }),
+      alreadyCompleted: false,
+      creditDeducted: true,
+      previousCredits: 5,
+      newCredits: 4,
+      nextLessonDate: "2026-10-14",
+    });
+    expect(lookups[0].searchParams.get("id")).toBe("eq.lesson-1");
+    expect(logs).toHaveLength(1);
+    expect(logs[0].url).toBe(
+      "https://studio-app.test/api/agent/lessons/lesson-1/log",
+    );
+    expect(logs[0].init.method).toBe("POST");
+    expect(new Headers(logs[0].init.headers).get("authorization")).toBe(
+      "Bearer agent-secret",
+    );
+    expect(JSON.parse(String(logs[0].init.body))).toEqual({
+      notes: "Earlier notes",
+    });
+  });
+
+  it("sends newly written notes instead", async () => {
+    const { logs } = mockStudio();
+    await complete({ lessonId: "lesson-1", notes: "  Scales, then Chopin.  " });
+    expect(JSON.parse(String(logs[0].init.body))).toEqual({
+      notes: "Scales, then Chopin.",
+    });
+  });
+
+  it("does not log an already completed lesson again", async () => {
+    const { logs } = mockStudio({ status: "completed" });
+    const response = await complete({ lessonId: "lesson-1" });
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      alreadyCompleted: true,
+      lesson: { status: "completed" },
+    });
+    expect(logs).toHaveLength(0);
+  });
+
+  it.each([
+    [{ status: "cancelled" }, 409, "cancelled"],
+    [{ date: "2026-10-09" }, 409, "hasn’t started"],
+    [null, 404, "no longer exists"],
+  ])(
+    "refuses lessons that cannot be completed (%j)",
+    async (lesson, status, message) => {
+      const { logs } = mockStudio(lesson);
+      const response = await complete({ lessonId: "lesson-1" });
+      expect(response.status).toBe(status);
+      expect((await response.json()).error).toContain(message);
+      expect(logs).toHaveLength(0);
+    },
+  );
+
+  it.each([
+    ["not json", 400],
+    [{ lessonId: "../admin" }, 400],
+    [{ lessonId: "" }, 400],
+    [{ lessonId: "lesson-1", notes: 5 }, 400],
+    [{ lessonId: "lesson-1", notes: "x".repeat(10_001) }, 400],
+  ])(
+    "validates the request before contacting Piano Studio (%j)",
+    async (body, status) => {
+      const fetchMock = vi.fn();
+      vi.stubGlobal("fetch", fetchMock);
+      expect((await complete(body)).status).toBe(status);
+      expect(fetchMock).not.toHaveBeenCalled();
+    },
+  );
+
+  it("requires the private key or the verified owner account", async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    expect(
+      (await complete({ lessonId: "lesson-1" }, { "X-Piano-Key": "wrong" }))
+        .status,
+    ).toBe(401);
+    expect(fetchMock).not.toHaveBeenCalled();
+    const { studioRequests } = mockServices("another-account");
+    const response = await POST(
+      new Request(completeUrl, {
+        method: "POST",
+        headers: { authorization: "Bearer owner-token" },
+        body: JSON.stringify({ lessonId: "lesson-1" }),
+      }),
+    );
+    expect(response.status).toBe(403);
+    expect(studioRequests).toHaveLength(0);
+  });
+
+  it("explains a missing connection secret without touching Piano Studio", async () => {
+    vi.stubEnv("PIANO_STUDIO_AGENT_SECRET", "");
+    const { logs, lookups } = mockStudio();
+    const response = await complete({ lessonId: "lesson-1" });
+    expect(response.status).toBe(503);
+    expect((await response.json()).error).toContain(
+      "PIANO_STUDIO_AGENT_SECRET",
+    );
+    expect(logs).toHaveLength(0);
+    expect(lookups).toHaveLength(0);
+  });
+
+  it.each([
+    [() => new Response("", { status: 401 }), 502, "rejected"],
+    [
+      () => Response.json({ error: "Boom" }, { status: 500 }),
+      502,
+      "couldn’t log",
+    ],
+    [
+      () => {
+        throw new DOMException("Timed out", "TimeoutError");
+      },
+      504,
+      "didn’t confirm",
+    ],
+  ])(
+    "reports Piano Studio failures without leaking secrets (%#)",
+    async (agent, status, message) => {
+      mockStudio({}, agent);
+      const response = await complete({ lessonId: "lesson-1" });
+      expect(response.status).toBe(status);
+      const text = await response.text();
+      expect(text).toContain(message);
+      expect(text).not.toContain("agent-secret");
+      expect(text).not.toContain("private-studio-key");
+    },
+  );
 });

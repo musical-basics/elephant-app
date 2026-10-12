@@ -1,6 +1,6 @@
 import { createHash, timingSafeEqual } from "node:crypto";
 
-/** A private, read-only calendar capability; never a studio database key. */
+/** A private calendar capability (read lessons, complete started ones); never a studio database key. */
 export function hasLocalPianoAccess(request: Request): boolean {
   const key = request.headers.get("x-piano-key") || "";
   const expected = process.env.PIANO_STUDIO_LOCAL_KEY_HASH || "";

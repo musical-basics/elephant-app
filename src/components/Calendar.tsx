@@ -1,6 +1,7 @@
 import { useState } from "react";
 import {
   Bell,
+  LoaderCircle,
   CalendarDays,
   Check,
   ChevronLeft,
@@ -14,10 +15,11 @@ import {
   RefreshCw,
   Trash2,
 } from "lucide-react";
+import Sheet from "./Sheet";
 import { localDateKey } from "../lib/schedule";
 import type { ScheduledItem } from "../lib/schedule";
 import { PIANO_STUDIO_URL } from "../lib/pianoLessons";
-import type { PianoLesson } from "../lib/pianoLessons";
+import type { LessonCompletion, PianoLesson } from "../lib/pianoLessons";
 import { usePianoLessons } from "../lib/usePianoLessons";
 import type { LocalPianoConnection } from "../lib/localPianoConnection";
 import "./Calendar.css";
@@ -39,6 +41,7 @@ export default function Calendar({
   onEdit,
   onDelete,
   onToggle,
+  onNotice,
 }: {
   items: ScheduledItem[];
   accessToken: string | null;
@@ -48,7 +51,9 @@ export default function Calendar({
   onEdit: (item: ScheduledItem) => void;
   onDelete: (item: ScheduledItem) => void;
   onToggle: (item: ScheduledItem) => void;
+  onNotice: (message: string) => void;
 }) {
+  const [completing, setCompleting] = useState<PianoLesson | null>(null);
   const [selectedDate, setSelectedDate] = useState(() =>
     localDateKey(new Date(now)),
   );
@@ -311,6 +316,19 @@ export default function Calendar({
                           <Music2 size={12} /> Piano Studio ·{" "}
                           {item.status === "completed" ? "Completed" : "Booked"}
                         </p>
+                        {item.status === "scheduled" &&
+                          Date.parse(item.scheduledAt) <= now && (
+                            <div className="schedule-actions">
+                              <button
+                                className="text-button"
+                                aria-label={`Complete ${item.title}`}
+                                onClick={() => setCompleting(item)}
+                              >
+                                <Check size={14} />
+                                Complete
+                              </button>
+                            </div>
+                          )}
                       </>
                     ) : (
                       <>
@@ -410,6 +428,129 @@ export default function Calendar({
         Times are shown in{" "}
         {Intl.DateTimeFormat().resolvedOptions().timeZone.replaceAll("_", " ")}.
       </p>
+      {completing && (
+        <CompleteLessonSheet
+          lesson={completing}
+          onClose={() => setCompleting(null)}
+          onComplete={async (notes) => {
+            const result = await piano.complete(completing.id, notes);
+            setCompleting(null);
+            onNotice(completionMessage(result));
+          }}
+        />
+      )}
     </div>
+  );
+}
+
+function completionMessage(result: LessonCompletion): string {
+  if (result.alreadyCompleted) return "This lesson was already completed.";
+  const credits =
+    result.creditDeducted &&
+    result.previousCredits != null &&
+    result.newCredits != null
+      ? ` Credits ${result.previousCredits} → ${result.newCredits}.`
+      : "";
+  const next = result.nextLessonDate
+    ? ` Next lesson booked for ${new Date(`${result.nextLessonDate}T12:00:00`).toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" })}.`
+    : "";
+  return `Lesson logged in Piano Studio.${credits}${next}`;
+}
+
+function CompleteLessonSheet({
+  lesson,
+  onClose,
+  onComplete,
+}: {
+  lesson: PianoLesson;
+  onClose: () => void;
+  onComplete: (notes: string) => Promise<void>;
+}) {
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState("");
+  const student = lesson.title.replace(/^Piano lesson · /, "");
+  return (
+    <Sheet
+      title="Complete this lesson?"
+      description={`Piano Studio will log ${student}’s lesson: it deducts 1 credit, books next week’s lesson if there isn’t one, and emails ${student} the lesson notes.`}
+      onClose={() => {
+        // Closing mid-request would hide whether the lesson was logged.
+        if (!pending) onClose();
+      }}
+    >
+      <form
+        className="sheet-form"
+        onSubmit={async (event) => {
+          event.preventDefault();
+          if (pending) return;
+          setPending(true);
+          setError("");
+          try {
+            await onComplete(
+              String(new FormData(event.currentTarget).get("notes")),
+            );
+          } catch (failure) {
+            setError(
+              failure instanceof Error
+                ? failure.message
+                : "Piano Studio couldn’t log this lesson. Please try again.",
+            );
+            setPending(false);
+          }
+        }}
+      >
+        <p className="lesson-complete-when">
+          {new Date(lesson.scheduledAt).toLocaleString(undefined, {
+            weekday: "long",
+            month: "long",
+            day: "numeric",
+            hour: "numeric",
+            minute: "2-digit",
+          })}{" "}
+          · {lesson.durationMinutes} min
+        </p>
+        <label>
+          Lesson notes for {student} (optional)
+          <textarea
+            name="notes"
+            rows={5}
+            maxLength={10_000}
+            disabled={pending}
+            placeholder="What you covered and what to practice"
+          />
+        </label>
+        <p className="small muted lesson-complete-hint">
+          Leave blank to keep any notes already saved in Piano Studio.
+        </p>
+        {error && (
+          <p className="form-error" role="alert">
+            {error}
+          </p>
+        )}
+        <div className="sheet-actions">
+          <button
+            type="button"
+            className="secondary-button"
+            disabled={pending}
+            onClick={onClose}
+          >
+            Cancel
+          </button>
+          <button type="submit" className="primary-button" disabled={pending}>
+            {pending ? (
+              <>
+                <LoaderCircle className="spin" size={16} />
+                Logging…
+              </>
+            ) : (
+              <>
+                <Check size={16} />
+                Complete lesson
+              </>
+            )}
+          </button>
+        </div>
+      </form>
+    </Sheet>
   );
 }

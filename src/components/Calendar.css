@@ -60,6 +60,15 @@ a.schedule-title {
   align-items: center;
   gap: 5px;
 }
+.theme .lesson-complete-when {
+  font-size: 13px;
+  font-weight: 500;
+  margin: -6px 0 22px;
+}
+.theme .lesson-complete-hint {
+  margin: -12px 0 4px;
+  font-size: 11px;
+}
 .calendar-month {
   background: var(--surface);
   border: 1px solid var(--line);

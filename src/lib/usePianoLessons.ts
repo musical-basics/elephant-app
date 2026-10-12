@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import type { PianoLessonFeed } from "./pianoLessons";
+import type { LessonCompletion, PianoLessonFeed } from "./pianoLessons";
 
 interface FeedState {
   key: string;
@@ -24,6 +24,60 @@ export function usePianoLessons(
   });
   const [refreshId, setRefreshId] = useState(0);
   const refresh = useCallback(() => setRefreshId((id) => id + 1), []);
+  const headers = useCallback(
+    (): Record<string, string> =>
+      localKey
+        ? { "X-Piano-Key": localKey }
+        : { Authorization: `Bearer ${token}` },
+    [token, localKey],
+  );
+
+  /** Logs the lesson in Piano Studio, then shows it as completed at once. */
+  const complete = useCallback(
+    async (lessonId: string, notes: string): Promise<LessonCompletion> => {
+      let response: Response;
+      try {
+        response = await fetch("/api/piano-lessons", {
+          method: "POST",
+          headers: { ...headers(), "Content-Type": "application/json" },
+          body: JSON.stringify({ lessonId, notes }),
+          cache: "no-store",
+          signal: AbortSignal.timeout(35_000),
+        });
+      } catch {
+        refresh();
+        throw new Error(
+          "Piano Studio didn’t confirm in time. Refresh to check whether the lesson was logged before trying again.",
+        );
+      }
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        refresh();
+        throw new Error(
+          typeof body?.error === "string"
+            ? body.error
+            : "Piano Studio couldn’t log this lesson. Please try again.",
+        );
+      }
+      const result = body as LessonCompletion;
+      setState((previous) =>
+        previous.feed
+          ? {
+              ...previous,
+              feed: {
+                ...previous.feed,
+                lessons: previous.feed.lessons.map((lesson) =>
+                  lesson.id === result.lesson.id ? result.lesson : lesson,
+                ),
+              },
+            }
+          : previous,
+      );
+      refresh();
+      return result;
+    },
+    [headers, refresh],
+  );
 
   useEffect(() => {
     if (!connected) return;
@@ -45,9 +99,7 @@ export function usePianoLessons(
         const response = await fetch(
           `/api/piano-lessons?${new URLSearchParams({ from, to })}`,
           {
-            headers: localKey
-              ? { "X-Piano-Key": localKey }
-              : { Authorization: `Bearer ${token}` },
+            headers: headers(),
             cache: "no-store",
             signal: controller.signal,
           },
@@ -96,7 +148,7 @@ export function usePianoLessons(
       window.removeEventListener("online", onVisible);
       document.removeEventListener("visibilitychange", onVisible);
     };
-  }, [token, localKey, connected, from, to, key, refreshId]);
+  }, [token, localKey, connected, from, to, key, refreshId, headers]);
 
   // Synchronously hide the old account/range, even before effect cleanup runs.
   const current = connected && state.key === key ? state : null;
@@ -105,5 +157,6 @@ export function usePianoLessons(
     error: current?.error ?? null,
     loading: connected && (current?.loading ?? true),
     refresh,
+    complete,
   };
 }
