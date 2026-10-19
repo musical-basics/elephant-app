@@ -455,6 +455,47 @@ test("taking a bite preserves the current item until explicitly completed and pe
   );
 });
 
+test("Take a bite saves with Enter and uses Shift+Enter for a new line", async ({
+  page,
+}) => {
+  await page.goto("/#/still/focus");
+  await page.getByRole("button", { name: /Take a bite/ }).click();
+
+  const first = page.getByLabel("What can you do right now?", {
+    exact: false,
+  });
+  await first.fill("Choose a dinner theme");
+  await first.press("Shift+Enter");
+  await first.pressSequentially("with everyone");
+
+  const remainder = page.getByLabel("What will you do after that?", {
+    exact: false,
+  });
+  await remainder.fill("Write three menu ideas");
+  await remainder.press("Enter");
+
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect
+    .poll(() =>
+      page.evaluate(() => {
+        const saved = JSON.parse(
+          localStorage.getItem("elephant.workspace.local.v1")!,
+        ).state;
+        return saved.items
+          .filter(
+            (item: { projectId: string | null; completedAt: string | null }) =>
+              item.projectId === "demo-dinner" && !item.completedAt,
+          )
+          .slice(0, 2)
+          .map((item: { title: string }) => item.title);
+      }),
+    )
+    .toEqual([
+      "Choose a dinner theme\nwith everyone",
+      "Write three menu ideas",
+    ]);
+});
+
 test("projects can be created, ordered, edited, paused, and reactivated", async ({
   page,
 }) => {

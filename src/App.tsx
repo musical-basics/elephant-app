@@ -2838,6 +2838,9 @@ export default function App({
                     <textarea
                       name="first"
                       defaultValue={current.item.title}
+                      aria-describedby="take-bite-keyboard-hint"
+                      enterKeyHint="done"
+                      onKeyDown={submitTaskOnEnter}
                       rows={3}
                       maxLength={500}
                       autoFocus
@@ -2853,11 +2856,17 @@ export default function App({
                     <textarea
                       name="remainder"
                       placeholder="Leave the next little step here…"
+                      aria-describedby="take-bite-keyboard-hint"
+                      enterKeyHint="done"
+                      onKeyDown={submitTaskOnEnter}
                       rows={3}
                       maxLength={500}
                       required
                     />
                   </label>
+                  <p id="take-bite-keyboard-hint" className="small muted">
+                    Enter to save · Shift+Enter for a new line
+                  </p>
                   <div className="bite-explainer">
                     <Leaf size={17} />
                     <p>
