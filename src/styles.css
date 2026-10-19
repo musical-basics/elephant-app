@@ -403,6 +403,10 @@ button {
 .add-top:hover {
   background: var(--soft);
 }
+.completed-top {
+  color: var(--green);
+  border-color: color-mix(in srgb, var(--green) 32%, var(--line));
+}
 .mobile-wordmark,
 .mobile-settings,
 .mobile-diary,
@@ -3771,6 +3775,9 @@ button {
   }
 }
 @media (max-width: 360px) {
+  .header-actions {
+    gap: 5px;
+  }
   .app-content {
     padding-left: 19px;
     padding-right: 19px;

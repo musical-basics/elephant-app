@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
-  addItem, addProject, completeCurrent, createDemoState, createEmptyState,
+  addItem, addCompletedItem, addProject, completeCurrent, createDemoState, createEmptyState, currentQueueEntry,
   deleteItem, deleteProject, duplicateItem, ensureProjectPlaceholders, exportCsv, moveItem, putBackItem, renameItem, reorderItem, reprocess,
   resolveQueue, takeBite, updateProject, validateImport, MAX_INLINE_AVATAR_BYTES,
   MAX_PROJECT_NOTES_LENGTH,
@@ -108,6 +108,33 @@ describe('equal project pacing', () => {
 });
 
 describe('completion and project lifecycle', () => {
+  it('logs an already-completed item without changing the current queue or focus', () => {
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime('2026-10-19T20:00:00.000Z');
+      const state = sample();
+      const next = addCompletedItem(state, '  Sent an unplanned reply  ', 'p');
+      expect(next.items.at(-1)).toMatchObject({
+        projectId: 'p',
+        title: 'Sent an unplanned reply',
+        createdAt: '2026-10-19T20:00:00.000Z',
+        completedAt: '2026-10-19T20:00:00.000Z',
+      });
+      expect(next.activityLog?.at(-1)).toMatchObject({
+        title: 'Sent an unplanned reply',
+        category: 'task',
+        endedAt: '2026-10-19T20:00:00.000Z',
+        taskId: next.items.at(-1)?.id,
+      });
+      expect(next.queue).toBe(state.queue);
+      expect(next.focusMode).toBe(state.focusMode);
+      expect(currentQueueEntry(next)?.item.id).toBe(currentQueueEntry(state)?.item.id);
+      expect(validateImport(JSON.parse(JSON.stringify(next)))).toEqual(next);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('completes only the current item and preserves other slots', () => {
     const state = sample();
     const next = completeCurrent(state);

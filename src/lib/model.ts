@@ -227,6 +227,17 @@ export function addItem(state: AppState, value: string, projectId?: string | nul
   return reprocess({ ...state, projects, items, queue });
 }
 
+/** Record work that was completed before it was added to the queue. */
+export function addCompletedItem(state: AppState, value: string, projectId?: string | null): AppState {
+  const text = title(value);
+  const project = projectId ? state.projects.find((entry) => entry.id === projectId) : undefined;
+  if (projectId && !project) return state;
+  const timestamp = now();
+  const item: Item = { id: id(), projectId: project?.id ?? null, title: text, createdAt: timestamp, completedAt: timestamp };
+  const activityLog = [...(state.activityLog ?? []), logCompletedTask(state, item, timestamp)];
+  return { ...state, items: [...state.items, item], activityLog };
+}
+
 /** Copy active steps in place; completed work starts fresh at the end of its list. */
 export function duplicateItem(state: AppState, itemId: string): AppState {
   const source = state.items.find((item) => item.id === itemId);

@@ -69,6 +69,7 @@ import { designs } from "./lib/designs";
 import type { DesignId } from "./lib/designs";
 import {
   addItem,
+  addCompletedItem,
   addProject,
   completeCurrent,
   currentQueueEntry,
@@ -126,6 +127,7 @@ type Modal =
   | { kind: "scheduled"; item?: ScheduledItem; date?: string }
   | { kind: "deleteScheduled"; item: ScheduledItem }
   | { kind: "item"; projectId?: string; afterId?: string }
+  | { kind: "completedItem" }
   | { kind: "project" }
   | { kind: "bite" }
   | { kind: "rename"; item: Item }
@@ -522,6 +524,16 @@ export default function App({
           ),
         "A small step, added.",
       );
+    if (modal?.kind === "completedItem")
+      submit(
+        (s) =>
+          addCompletedItem(
+            s,
+            String(fields.get("title")),
+            String(fields.get("projectId")) || undefined,
+          ),
+        "Completed item logged.",
+      );
     if (modal?.kind === "project") {
       try {
         const next = addProject(state, String(fields.get("name")));
@@ -731,6 +743,17 @@ export default function App({
                 <Plus size={18} />
                 <span>Add item</span>
               </button>
+              {screen === "focus" && (
+                <button
+                  className="add-top completed-top"
+                  aria-label="Add item to be completed now"
+                  title="Log an item you just completed"
+                  onClick={() => setModal({ kind: "completedItem" })}
+                >
+                  <CircleCheck size={18} />
+                  <span>Completed now</span>
+                </button>
+              )}
             </div>
           </header>
           {workspace.ready && !localPiano.key && !workspace.userEmail && (
@@ -2638,25 +2661,27 @@ export default function App({
               ? "Complete this task?"
               : modal.kind === "item"
                 ? "One little thing."
-                : modal.kind === "project"
-                  ? "Make room for an idea."
-                  : modal.kind === "bite"
-                    ? "A smaller bite."
-                    : modal.kind === "rename"
-                      ? modal.item.isPlaceholder
-                        ? "Add your next task"
-                        : "Edit your item"
-                      : modal.kind === "delete"
-                        ? modal.item.completedAt
-                          ? "Remove completed item?"
-                          : "Remove this item?"
-                        : modal.kind === "deleteProject"
-                          ? "Delete this project?"
-                          : modal.kind === "completeProject"
-                            ? "Complete this project?"
-                            : modal.kind === "import"
-                              ? "Restore this workspace?"
-                              : "Ready for a fresh start?"
+                : modal.kind === "completedItem"
+                  ? "Log a little win."
+                  : modal.kind === "project"
+                    ? "Make room for an idea."
+                    : modal.kind === "bite"
+                      ? "A smaller bite."
+                      : modal.kind === "rename"
+                        ? modal.item.isPlaceholder
+                          ? "Add your next task"
+                          : "Edit your item"
+                        : modal.kind === "delete"
+                          ? modal.item.completedAt
+                            ? "Remove completed item?"
+                            : "Remove this item?"
+                          : modal.kind === "deleteProject"
+                            ? "Delete this project?"
+                            : modal.kind === "completeProject"
+                              ? "Complete this project?"
+                              : modal.kind === "import"
+                                ? "Restore this workspace?"
+                                : "Ready for a fresh start?"
           }
           description={
             modal.kind === "completeTimedItem"
@@ -2665,28 +2690,30 @@ export default function App({
                 ? "Make the first step a little easier. The rest will be waiting for you."
                 : modal.kind === "item"
                   ? "An errand for today, or a step toward something bigger."
-                  : modal.kind === "project"
-                    ? "Give your project a name. We’ll take it one step at a time."
-                    : modal.kind === "import"
-                      ? `This backup has ${modal.data.projects.length} projects, ${modal.data.items.length} items, ${modal.data.scheduledItems.length} scheduled items, ${modal.data.activityLog?.length ?? 0} logged activities, and ${modal.data.diary?.length ?? 0} diary entries. It will replace all current workspace data.`
-                      : modal.kind === "reset"
-                        ? "This deletes all items, projects, logged activities, diary entries, and history in this workspace. Export a backup first if you want to keep them."
-                        : modal.kind === "delete"
-                          ? modal.item.completedAt
-                            ? "This permanently removes the item from your completed history. This can’t be undone."
-                            : "This item will be removed from the project and queue. This can’t be undone."
-                          : modal.kind === "deleteProject"
-                            ? "This permanently deletes the project and its unfinished items, removing them from the active queue. Completed items will stay in your history."
-                            : modal.kind === "completeProject"
-                              ? state.items.some(
-                                  (item) =>
-                                    item.projectId === modal.project.id &&
-                                    !item.completedAt &&
-                                    !item.isPlaceholder,
-                                )
-                                ? "This will mark the project and its remaining items as completed and remove them from Do now. You can reopen the project later."
-                                : "Move this project to Completed. You can reopen it later."
-                              : undefined
+                  : modal.kind === "completedItem"
+                    ? "Add something you already finished without changing what’s next in Do now."
+                    : modal.kind === "project"
+                      ? "Give your project a name. We’ll take it one step at a time."
+                      : modal.kind === "import"
+                        ? `This backup has ${modal.data.projects.length} projects, ${modal.data.items.length} items, ${modal.data.scheduledItems.length} scheduled items, ${modal.data.activityLog?.length ?? 0} logged activities, and ${modal.data.diary?.length ?? 0} diary entries. It will replace all current workspace data.`
+                        : modal.kind === "reset"
+                          ? "This deletes all items, projects, logged activities, diary entries, and history in this workspace. Export a backup first if you want to keep them."
+                          : modal.kind === "delete"
+                            ? modal.item.completedAt
+                              ? "This permanently removes the item from your completed history. This can’t be undone."
+                              : "This item will be removed from the project and queue. This can’t be undone."
+                            : modal.kind === "deleteProject"
+                              ? "This permanently deletes the project and its unfinished items, removing them from the active queue. Completed items will stay in your history."
+                              : modal.kind === "completeProject"
+                                ? state.items.some(
+                                    (item) =>
+                                      item.projectId === modal.project.id &&
+                                      !item.completedAt &&
+                                      !item.isPlaceholder,
+                                  )
+                                  ? "This will mark the project and its remaining items as completed and remove them from Do now. You can reopen the project later."
+                                  : "Move this project to Completed. You can reopen it later."
+                                : undefined
           }
           onClose={closeModal}
         >
@@ -2731,7 +2758,9 @@ export default function App({
               </div>
             </>
           )}
-          {["item", "project", "bite", "rename"].includes(modal.kind) && (
+          {["item", "completedItem", "project", "bite", "rename"].includes(
+            modal.kind,
+          ) && (
             <form onSubmit={submitForm} className="sheet-form">
               {modal.kind === "item" && (
                 <>
@@ -2787,6 +2816,43 @@ export default function App({
                       same project.
                     </p>
                   )}
+                </>
+              )}
+              {modal.kind === "completedItem" && (
+                <>
+                  <label>
+                    What did you complete?
+                    <textarea
+                      name="title"
+                      placeholder="Something you finished just now…"
+                      aria-describedby="completed-item-keyboard-hint"
+                      enterKeyHint="done"
+                      onKeyDown={submitTaskOnEnter}
+                      rows={3}
+                      maxLength={500}
+                      autoFocus
+                      required
+                    />
+                  </label>
+                  <p id="completed-item-keyboard-hint" className="small muted">
+                    Enter to log · Shift+Enter for a new line
+                  </p>
+                  <label>
+                    Part of
+                    <select name="projectId" defaultValue="">
+                      <option value="">Just a one-off item</option>
+                      {state.projects.map((project) => (
+                        <option key={project.id} value={project.id}>
+                          {project.name}
+                          {project.status === "inactive"
+                            ? " (upcoming)"
+                            : project.status === "completed"
+                              ? " (completed)"
+                              : ""}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
                 </>
               )}
               {modal.kind === "project" && (
@@ -2894,15 +2960,19 @@ export default function App({
                 <button className="primary-button" type="submit">
                   {modal.kind === "bite"
                     ? "Make it smaller"
-                    : modal.kind === "project"
-                      ? "Create project"
-                      : modal.kind === "rename"
-                        ? modal.item.isPlaceholder
-                          ? "Add task"
-                          : "Save changes"
-                        : "Add item"}
+                    : modal.kind === "completedItem"
+                      ? "Log completed item"
+                      : modal.kind === "project"
+                        ? "Create project"
+                        : modal.kind === "rename"
+                          ? modal.item.isPlaceholder
+                            ? "Add task"
+                            : "Save changes"
+                          : "Add item"}
                   {modal.kind === "bite" ? (
                     <Scissors size={17} />
+                  ) : modal.kind === "completedItem" ? (
+                    <CircleCheck size={17} />
                   ) : (
                     <Plus size={17} />
                   )}
