@@ -3,6 +3,7 @@ import {
   addItem, addProject, completeCurrent, createDemoState, createEmptyState,
   deleteItem, deleteProject, duplicateItem, ensureProjectPlaceholders, exportCsv, moveItem, putBackItem, renameItem, reorderItem, reprocess,
   resolveQueue, takeBite, updateProject, validateImport, MAX_INLINE_AVATAR_BYTES,
+  MAX_PROJECT_NOTES_LENGTH,
   type AppState, type Item, type Project, type QueueSlot,
 } from './model';
 
@@ -215,9 +216,26 @@ describe('completion and project lifecycle', () => {
     const state = sample();
     state.queue = state.queue.filter((entry) => entry.id !== 'b' && entry.id !== 'c');
     expect(reprocess(state).queue).toHaveLength(6);
-    const next = updateProject(state, 'p', { name: 'A new name', dueDate: '2026-10-12' });
-    expect(next.projects[0]).toMatchObject({ name: 'A new name', dueDate: '2026-10-12' });
+    const next = updateProject(state, 'p', { name: 'A new name', dueDate: '2026-10-12', notes: 'Booked the venue.\nWaiting on catering.' });
+    expect(next.projects[0]).toMatchObject({ name: 'A new name', dueDate: '2026-10-12', notes: 'Booked the venue.\nWaiting on catering.' });
     expect(next.queue).toBe(state.queue);
+  });
+
+  it('stores multiline project notes and preserves old projects without notes', () => {
+    const state = sample();
+    const notes = 'Finished the first draft.\nNext: review it with Sam.';
+    const next = updateProject(state, 'p', { notes });
+    expect(next.projects[0].notes).toBe(notes);
+    expect(state.projects[0].notes).toBeUndefined();
+    expect(validateImport(JSON.parse(JSON.stringify(next)))).toEqual(next);
+    expect(validateImport(JSON.parse(JSON.stringify(state)))).toEqual(state);
+  });
+
+  it('rejects project notes that exceed the saved-data limit', () => {
+    const state = sample();
+    const notes = 'x'.repeat(MAX_PROJECT_NOTES_LENGTH + 1);
+    expect(() => updateProject(state, 'p', { notes })).toThrow(/characters or fewer/);
+    expect(() => validateImport({ ...state, projects: [{ ...state.projects[0], notes }] })).toThrow(/project notes/);
   });
 
   it('keeps an empty project active after deleting its only item', () => {

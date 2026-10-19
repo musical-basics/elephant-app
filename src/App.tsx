@@ -87,6 +87,7 @@ import {
   takeBite,
   updateProject,
   validateImport,
+  MAX_PROJECT_NOTES_LENGTH,
 } from "./lib/model";
 import type { AppState, Item, Project } from "./lib/model";
 import { useWorkspace } from "./lib/useWorkspace";
@@ -1572,6 +1573,52 @@ export default function App({
                         </button>
                       )}
                     </div>
+                    <form
+                      className="project-notes"
+                      key={`${project.id}:${project.notes ?? ""}`}
+                      onSubmit={(event) => {
+                        event.preventDefault();
+                        const notes = String(
+                          new FormData(event.currentTarget).get("projectNotes"),
+                        );
+                        mutate(
+                          (current) =>
+                            updateProject(current, project.id, { notes }),
+                          "Project notes saved.",
+                        );
+                      }}
+                    >
+                      <div className="project-notes-heading">
+                        <span className="project-notes-icon" aria-hidden="true">
+                          <NotebookPen size={19} />
+                        </span>
+                        <div>
+                          <h2>Project notes</h2>
+                          <p>Keep the story of your progress in one place.</p>
+                        </div>
+                      </div>
+                      <label className="sr-only" htmlFor="projectNotes">
+                        Project notes
+                      </label>
+                      <textarea
+                        id="projectNotes"
+                        name="projectNotes"
+                        defaultValue={project.notes ?? ""}
+                        maxLength={MAX_PROJECT_NOTES_LENGTH}
+                        rows={6}
+                        placeholder="What’s been done, what changed, decisions, links, or anything you want to remember…"
+                      />
+                      <div className="project-notes-footer">
+                        <p>
+                          These notes stay with this project, even after it’s
+                          completed.
+                        </p>
+                        <button type="submit" className="secondary-button">
+                          <Check size={17} />
+                          Save notes
+                        </button>
+                      </div>
+                    </form>
                     <ProjectFocus
                       state={state}
                       projectId={project.id}

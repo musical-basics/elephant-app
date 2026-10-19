@@ -10,6 +10,7 @@ export type ProjectStatus = 'active' | 'inactive' | 'completed';
 export interface Project {
   id: string;
   name: string;
+  notes?: string;
   status: ProjectStatus;
   createdAt: string;
   dueDate: string | null;
@@ -61,6 +62,7 @@ export interface ResolvedQueueEntry {
 /** Equal pacing for every project. There is deliberately no priority field. */
 export const PROJECT_INSERTION_THRESHOLD = 1 / 3;
 export const MAX_INLINE_AVATAR_BYTES = 1.5 * 1024 * 1024;
+export const MAX_PROJECT_NOTES_LENGTH = 20_000;
 
 const now = () => new Date().toISOString();
 const id = () => crypto.randomUUID();
@@ -206,7 +208,7 @@ export function reprocess(state: AppState): AppState {
 }
 
 export function addProject(state: AppState, name: string): AppState {
-  const project: Project = { id: id(), name: title(name), status: 'active', createdAt: now(), dueDate: null, completedAt: null };
+  const project: Project = { id: id(), name: title(name), notes: '', status: 'active', createdAt: now(), dueDate: null, completedAt: null };
   return ensureProjectPlaceholders({ ...state, projects: [...state.projects, project] });
 }
 
@@ -245,9 +247,12 @@ export function duplicateItem(state: AppState, itemId: string): AppState {
   return { ...next, queue: [...next.queue.filter((slot) => slot !== copySlot), copySlot] };
 }
 
-export function updateProject(state: AppState, projectId: string, patch: Partial<Pick<Project, 'name' | 'status' | 'dueDate'>>): AppState {
+export function updateProject(state: AppState, projectId: string, patch: Partial<Pick<Project, 'name' | 'notes' | 'status' | 'dueDate'>>): AppState {
   const project = state.projects.find((entry) => entry.id === projectId);
   if (!project) return state;
+  if (patch.notes !== undefined && patch.notes.length > MAX_PROJECT_NOTES_LENGTH) {
+    throw new Error(`Project notes must be ${MAX_PROJECT_NOTES_LENGTH.toLocaleString()} characters or fewer.`);
+  }
   const timestamp = now();
   const status = patch.status ?? project.status;
   const updated: Project = {
@@ -499,7 +504,9 @@ export function validateImport(input: unknown): AppState {
     if (typeof project.status !== 'string' || !['active', 'inactive', 'completed'].includes(project.status)) throw new Error('Invalid backup: unknown project status.');
     const dueDate = project.dueDate === null ? null : string(project.dueDate, 'dueDate');
     if (dueDate && !validDate(dueDate)) throw new Error('Invalid backup: dueDate must be a valid date.');
-    return { id: string(project.id, 'project ID'), name: string(project.name, 'project name'), status: project.status as ProjectStatus, createdAt: timestamp(project.createdAt, 'project createdAt'), dueDate, completedAt: nullableTimestamp(project.completedAt, 'project completedAt') };
+    const notes = project.notes === undefined ? undefined : string(project.notes, 'project notes', true);
+    if (notes !== undefined && notes.length > MAX_PROJECT_NOTES_LENGTH) throw new Error(`Invalid backup: project notes must be ${MAX_PROJECT_NOTES_LENGTH.toLocaleString()} characters or fewer.`);
+    return { id: string(project.id, 'project ID'), name: string(project.name, 'project name'), ...(notes === undefined ? {} : { notes }), status: project.status as ProjectStatus, createdAt: timestamp(project.createdAt, 'project createdAt'), dueDate, completedAt: nullableTimestamp(project.completedAt, 'project completedAt') };
   });
   const items = array(data.items, 'items').map((value): Item => {
     const item = record(value, 'item');

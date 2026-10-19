@@ -978,6 +978,80 @@ button {
 .project-attributes .project-complete-action {
   min-height: 44px;
 }
+.project-notes {
+  margin-bottom: 28px;
+  padding: 22px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+.project-notes-heading {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+.project-notes-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  flex-shrink: 0;
+  border-radius: 11px;
+  color: var(--accent);
+  background: var(--soft);
+}
+.project-notes-heading h2 {
+  font-family: var(--heading);
+  font-size: 21px;
+  font-weight: 400;
+}
+.project-notes-heading p,
+.project-notes-footer p {
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.5;
+}
+.project-notes-heading p {
+  margin-top: 3px;
+}
+.project-notes textarea {
+  display: block;
+  width: 100%;
+  min-height: 138px;
+  resize: vertical;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  padding: 14px;
+  background: var(--bg);
+  color: var(--ink);
+  font: inherit;
+  font-size: 12px;
+  line-height: 1.7;
+}
+.project-notes textarea::placeholder {
+  color: var(--muted);
+}
+.project-notes textarea:focus {
+  border-color: var(--accent);
+  outline: 2px solid color-mix(in srgb, var(--accent) 20%, transparent);
+  outline-offset: 1px;
+}
+.project-notes-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  margin-top: 13px;
+}
+.project-notes-footer p {
+  margin: 0;
+}
+.project-notes-footer .secondary-button {
+  min-height: 44px;
+  flex-shrink: 0;
+}
 .project-empty-note {
   line-height: 1.7;
   margin-bottom: 16px !important;
@@ -3096,6 +3170,17 @@ button {
   }
   .project-attributes input {
     font-size: 11px;
+  }
+  .project-notes {
+    padding: 17px;
+    margin-bottom: 22px;
+  }
+  .project-notes-footer {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+  .project-notes-footer .secondary-button {
+    width: 100%;
   }
   .section-heading h2 {
     font-size: 22px;
