@@ -90,3 +90,86 @@ test("Do now toggles editable project notes beside the current item", async ({
     ),
   ).toBe(true);
 });
+
+test("Do now shows completed items from the current project", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1200, height: 900 });
+  await page.goto("/#/still/focus");
+  await page.evaluate(() => {
+    const key = "elephant.workspace.local.v1";
+    const saved = JSON.parse(localStorage.getItem(key)!);
+    saved.state.items = saved.state.items.map(
+      (item: { id: string; completedAt: string | null }) => {
+        if (item.id === "dinner-2")
+          return {
+            ...item,
+            completedAt: "2026-10-19T20:00:00.000Z",
+            timeSpentSeconds: 754,
+          };
+        if (item.id === "dinner-3")
+          return { ...item, completedAt: "2026-10-20T20:00:00.000Z" };
+        if (item.id === "errand-1")
+          return { ...item, completedAt: "2026-10-20T21:00:00.000Z" };
+        return item;
+      },
+    );
+    saved.state.queue = saved.state.queue.filter(
+      (slot: { kind: string; itemId?: string }) =>
+        slot.kind !== "errand" || slot.itemId !== "errand-1",
+    );
+    localStorage.setItem(key, JSON.stringify(saved));
+  });
+  await page.reload();
+
+  const toggle = page.getByRole("button", {
+    name: /See project completed items/,
+  });
+  const panel = page.getByRole("complementary", {
+    name: "Completed items for Plan a Sunday dinner",
+  });
+  await expect(toggle).toHaveAttribute("aria-expanded", "false");
+  await expect(toggle).toContainText("2");
+  await expect(panel).toBeHidden();
+
+  await toggle.click();
+  await expect(
+    page.getByRole("button", { name: /Hide completed items/ }),
+  ).toHaveAttribute("aria-expanded", "true");
+  await expect(panel).toBeVisible();
+  await expect(panel.getByRole("heading")).toHaveText(
+    "Completed in this project",
+  );
+  await expect(panel.getByRole("listitem")).toHaveCount(2);
+  await expect(panel.getByRole("listitem").nth(0)).toContainText(
+    "Make a short shopping list",
+  );
+  await expect(panel.getByRole("listitem").nth(1)).toContainText(
+    "Choose one simple recipe",
+  );
+  await expect(panel).not.toContainText("Water the plants");
+  await expect(panel).toContainText("12:34 spent");
+
+  const itemBounds = await page.locator(".focus-center").boundingBox();
+  const panelBounds = await panel.boundingBox();
+  expect(panelBounds!.x).toBeGreaterThan(itemBounds!.x + itemBounds!.width / 2);
+
+  await page.getByRole("button", { name: "Show notes", exact: true }).click();
+  await expect(panel).toBeHidden();
+  await expect(
+    page.getByRole("complementary", {
+      name: "Notes for Plan a Sunday dinner",
+    }),
+  ).toBeVisible();
+
+  await page.setViewportSize({ width: 320, height: 844 });
+  await page
+    .getByRole("button", { name: /See project completed items/ })
+    .click();
+  await expect(panel).toBeVisible();
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= window.innerWidth,
+    ),
+  ).toBe(true);
+});

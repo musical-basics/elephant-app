@@ -1272,7 +1272,7 @@ button {
   min-height: 0;
   align-items: center;
 }
-.focus-work-area.notes-open {
+.focus-work-area.panel-open {
   grid-template-columns: minmax(0, 1fr) minmax(280px, 360px);
   gap: 28px;
 }
@@ -1280,7 +1280,8 @@ button {
   min-width: 0;
   margin: 0;
 }
-.focus-notes-side {
+.focus-notes-side,
+.focus-completed-side {
   min-width: 0;
 }
 .focus-project-notes {
@@ -1289,6 +1290,70 @@ button {
 }
 .focus-project-notes textarea {
   min-height: 220px;
+}
+.focus-project-completed {
+  max-height: min(520px, calc(100dvh - 220px));
+  margin: 20px 0;
+  padding: 22px;
+  overflow-y: auto;
+  text-align: left;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+.focus-completed-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.focus-completed-item {
+  display: grid;
+  grid-template-columns: 30px minmax(0, 1fr);
+  gap: 10px;
+  align-items: start;
+  padding: 14px 0;
+  border-top: 1px solid var(--line);
+}
+.focus-completed-check {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  color: var(--accent);
+  background: var(--soft);
+  border-radius: 50%;
+}
+.focus-completed-item strong {
+  display: block;
+  overflow-wrap: anywhere;
+  font-size: 12px;
+  line-height: 1.45;
+}
+.focus-completed-item p,
+.focus-completed-empty {
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.55;
+}
+.focus-completed-item p {
+  margin-top: 4px;
+}
+.focus-completed-item p span {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 8px;
+}
+.focus-completed-empty {
+  padding: 18px;
+  text-align: center;
+  border: 1px dashed var(--line);
+  border-radius: 9px;
+  background: var(--bg);
 }
 .focus-symbol {
   display: inline-flex;
@@ -1380,12 +1445,26 @@ button {
   min-height: 44px;
   color: var(--accent);
 }
-.focus-notes-toggle {
+.focus-notes-toggle,
+.focus-completed-toggle {
   display: inline-flex;
   align-items: center;
   gap: 6px;
   min-height: 44px;
   color: var(--accent);
+}
+.focus-project-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: 999px;
+  color: var(--ink);
+  background: var(--soft);
+  font-size: 9px;
+  line-height: 1;
 }
 .focus-reassurance {
   font-size: 10px;
@@ -3068,15 +3147,19 @@ button {
   .focus-center {
     padding: 29px 0 36px;
   }
-  .focus-work-area.notes-open {
+  .focus-work-area.panel-open {
     grid-template-columns: 1fr;
     gap: 0;
   }
-  .focus-project-notes {
+  .focus-project-notes,
+  .focus-project-completed {
     margin: 0 0 24px;
   }
   .focus-project-notes textarea {
     min-height: 138px;
+  }
+  .focus-project-completed {
+    max-height: none;
   }
   .focus-symbol {
     height: 45px;

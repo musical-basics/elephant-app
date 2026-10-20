@@ -242,7 +242,9 @@ export default function App({
   const [search, setSearch] = useState("");
   const [completedPage, setCompletedPage] = useState(1);
   const [selectedItem, setSelectedItem] = useState<string | null>(null);
-  const [projectNotesOpen, setProjectNotesOpen] = useState(false);
+  const [focusProjectPanel, setFocusProjectPanel] = useState<
+    "notes" | "completed" | null
+  >(null);
   const [clockTick, setClockTick] = useState(0);
   const importRef = useRef<HTMLInputElement>(null);
   const avatarRef = useRef<HTMLInputElement>(null);
@@ -273,6 +275,16 @@ export default function App({
   const design = designs.find((d) => d.id === designId) ?? designs[0];
   const queue = resolveQueue(state);
   const current = currentQueueEntry(state);
+  const currentProjectCompletedItems = current?.project
+    ? state.items
+        .filter(
+          (item) =>
+            item.projectId === current.project!.id &&
+            item.completedAt &&
+            !item.isPlaceholder,
+        )
+        .sort((a, b) => b.completedAt!.localeCompare(a.completedAt!))
+    : [];
   const focusMode = activeFocusMode(state);
   const now = Date.now();
   const reminder = getActiveReminder(state, now);
@@ -315,7 +327,7 @@ export default function App({
   }, [completedPageCount]);
 
   useEffect(() => {
-    setProjectNotesOpen(false);
+    setFocusProjectPanel(null);
   }, [current?.project?.id]);
 
   function changeCompletedPage(page: number) {
@@ -1082,7 +1094,7 @@ export default function App({
                   ) : current ? (
                     <>
                       <div
-                        className={`focus-work-area${current.project && projectNotesOpen ? " notes-open" : ""}`}
+                        className={`focus-work-area${current.project && focusProjectPanel ? " panel-open" : ""}`}
                       >
                         <div className="focus-center">
                           <div className="focus-symbol">
@@ -1131,14 +1143,42 @@ export default function App({
                               <button
                                 type="button"
                                 className="text-button focus-notes-toggle"
-                                aria-expanded={projectNotesOpen}
+                                aria-expanded={focusProjectPanel === "notes"}
                                 aria-controls="focus-project-notes"
                                 onClick={() =>
-                                  setProjectNotesOpen((open) => !open)
+                                  setFocusProjectPanel((panel) =>
+                                    panel === "notes" ? null : "notes",
+                                  )
                                 }
                               >
                                 <NotebookPen size={15} />
-                                {projectNotesOpen ? "Hide notes" : "Show notes"}
+                                {focusProjectPanel === "notes"
+                                  ? "Hide notes"
+                                  : "Show notes"}
+                              </button>
+                              <button
+                                type="button"
+                                className="text-button focus-completed-toggle"
+                                aria-expanded={
+                                  focusProjectPanel === "completed"
+                                }
+                                aria-controls="focus-project-completed"
+                                onClick={() =>
+                                  setFocusProjectPanel((panel) =>
+                                    panel === "completed" ? null : "completed",
+                                  )
+                                }
+                              >
+                                <CheckCheck size={15} />
+                                {focusProjectPanel === "completed"
+                                  ? "Hide completed items"
+                                  : "See project completed items"}
+                                <span
+                                  className="focus-project-count"
+                                  aria-label={`${currentProjectCompletedItems.length} completed`}
+                                >
+                                  {currentProjectCompletedItems.length}
+                                </span>
                               </button>
                             </div>
                           )}
@@ -1153,13 +1193,13 @@ export default function App({
                             id="focus-project-notes"
                             className="focus-notes-side"
                             aria-label={`Notes for ${current.project.name}`}
-                            hidden={!projectNotesOpen}
+                            hidden={focusProjectPanel !== "notes"}
                           >
                             <ProjectNotesForm
                               key={`${current.project.id}:${current.project.notes ?? ""}`}
                               project={current.project}
                               inputId="focusProjectNotes"
-                              onClose={() => setProjectNotesOpen(false)}
+                              onClose={() => setFocusProjectPanel(null)}
                               onSave={(notes) =>
                                 mutate(
                                   (workspaceState) =>
@@ -1171,6 +1211,20 @@ export default function App({
                                   "Project notes saved.",
                                 )
                               }
+                            />
+                          </aside>
+                        )}
+                        {current.project && (
+                          <aside
+                            id="focus-project-completed"
+                            className="focus-completed-side"
+                            aria-label={`Completed items for ${current.project.name}`}
+                            hidden={focusProjectPanel !== "completed"}
+                          >
+                            <ProjectCompletedItemsPanel
+                              project={current.project}
+                              items={currentProjectCompletedItems}
+                              onClose={() => setFocusProjectPanel(null)}
                             />
                           </aside>
                         )}
@@ -3308,6 +3362,69 @@ function ProjectNotesForm({
         </button>
       </div>
     </form>
+  );
+}
+
+function ProjectCompletedItemsPanel({
+  project,
+  items,
+  onClose,
+}: {
+  project: Project;
+  items: Item[];
+  onClose: () => void;
+}) {
+  return (
+    <section className="focus-project-completed">
+      <div className="project-notes-heading">
+        <span className="project-notes-icon" aria-hidden="true">
+          <CheckCheck size={19} />
+        </span>
+        <div>
+          <h2>Completed in this project</h2>
+          <p>
+            {items.length} {items.length === 1 ? "item" : "items"} completed so
+            far.
+          </p>
+        </div>
+        <button
+          type="button"
+          className="icon-button project-notes-close"
+          aria-label="Hide project completed items"
+          onClick={onClose}
+        >
+          <X size={18} />
+        </button>
+      </div>
+      {items.length ? (
+        <ul className="focus-completed-list">
+          {items.map((item) => (
+            <li className="focus-completed-item" key={item.id}>
+              <span className="focus-completed-check" aria-hidden="true">
+                <Check size={15} />
+              </span>
+              <div>
+                <strong>{item.title}</strong>
+                <p>
+                  Completed {formatDate(item.completedAt!, true)}
+                  {item.timeSpentSeconds !== undefined && (
+                    <span>
+                      <Timer size={12} />
+                      {formatElapsedTime(item.timeSpentSeconds)} spent
+                    </span>
+                  )}
+                </p>
+              </div>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="focus-completed-empty">
+          Nothing completed yet. Your finished project items will appear here.
+        </p>
+      )}
+      <p className="sr-only">Completed items for {project.name}</p>
+    </section>
   );
 }
 
