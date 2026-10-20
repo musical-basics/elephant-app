@@ -242,6 +242,7 @@ export default function App({
   const [search, setSearch] = useState("");
   const [completedPage, setCompletedPage] = useState(1);
   const [selectedItem, setSelectedItem] = useState<string | null>(null);
+  const [projectNotesOpen, setProjectNotesOpen] = useState(false);
   const [clockTick, setClockTick] = useState(0);
   const importRef = useRef<HTMLInputElement>(null);
   const avatarRef = useRef<HTMLInputElement>(null);
@@ -312,6 +313,10 @@ export default function App({
   useEffect(() => {
     setCompletedPage((page) => Math.min(page, completedPageCount));
   }, [completedPageCount]);
+
+  useEffect(() => {
+    setProjectNotesOpen(false);
+  }, [current?.project?.id]);
 
   function changeCompletedPage(page: number) {
     setCompletedPage(page);
@@ -1076,57 +1081,99 @@ export default function App({
                     />
                   ) : current ? (
                     <>
-                      <div className="focus-center">
-                        <div className="focus-symbol">
-                          {design.id === "orbit" ? (
-                            <Moon size={27} />
-                          ) : design.id === "ember" ? (
-                            <Sun size={27} />
-                          ) : design.id === "pop" ? (
-                            <Zap size={27} />
-                          ) : (
-                            <Leaf size={27} />
-                          )}
-                        </div>
-                        <p className="eyebrow">
-                          {current.item.isPlaceholder
-                            ? "BLANK PLACEHOLDER"
-                            : "JUST THIS ONE THING"}
-                        </p>
-                        <div className="focus-frame" key={current.item.id}>
-                          <span className="frame-corner corner-tl" />
-                          <span className="frame-corner corner-tr" />
-                          <h1>
+                      <div
+                        className={`focus-work-area${current.project && projectNotesOpen ? " notes-open" : ""}`}
+                      >
+                        <div className="focus-center">
+                          <div className="focus-symbol">
+                            {design.id === "orbit" ? (
+                              <Moon size={27} />
+                            ) : design.id === "ember" ? (
+                              <Sun size={27} />
+                            ) : design.id === "pop" ? (
+                              <Zap size={27} />
+                            ) : (
+                              <Leaf size={27} />
+                            )}
+                          </div>
+                          <p className="eyebrow">
                             {current.item.isPlaceholder
-                              ? "What’s next for this project?"
-                              : current.item.title}
-                          </h1>
-                          <span className="frame-corner corner-bl" />
-                          <span className="frame-corner corner-br" />
+                              ? "BLANK PLACEHOLDER"
+                              : "JUST THIS ONE THING"}
+                          </p>
+                          <div className="focus-frame" key={current.item.id}>
+                            <span className="frame-corner corner-tl" />
+                            <span className="frame-corner corner-tr" />
+                            <h1>
+                              {current.item.isPlaceholder
+                                ? "What’s next for this project?"
+                                : current.item.title}
+                            </h1>
+                            <span className="frame-corner corner-bl" />
+                            <span className="frame-corner corner-br" />
+                          </div>
+                          {current.project && (
+                            <div className="focus-project">
+                              <p className="focus-project-name">
+                                <Folder size={15} />
+                                <span>{current.project.name}</span>
+                              </p>
+                              <button
+                                type="button"
+                                className="text-button focus-project-link"
+                                onClick={() =>
+                                  navigate("project", current.project!.id)
+                                }
+                              >
+                                View project
+                                <ArrowRight size={15} />
+                              </button>
+                              <button
+                                type="button"
+                                className="text-button focus-notes-toggle"
+                                aria-expanded={projectNotesOpen}
+                                aria-controls="focus-project-notes"
+                                onClick={() =>
+                                  setProjectNotesOpen((open) => !open)
+                                }
+                              >
+                                <NotebookPen size={15} />
+                                {projectNotesOpen ? "Hide notes" : "Show notes"}
+                              </button>
+                            </div>
+                          )}
+                          <p className="focus-reassurance">
+                            {current.item.isPlaceholder
+                              ? "Add a task, or close out the project when you’re done."
+                              : "Everything else can wait."}
+                          </p>
                         </div>
                         {current.project && (
-                          <div className="focus-project">
-                            <p className="focus-project-name">
-                              <Folder size={15} />
-                              <span>{current.project.name}</span>
-                            </p>
-                            <button
-                              type="button"
-                              className="text-button focus-project-link"
-                              onClick={() =>
-                                navigate("project", current.project!.id)
+                          <aside
+                            id="focus-project-notes"
+                            className="focus-notes-side"
+                            aria-label={`Notes for ${current.project.name}`}
+                            hidden={!projectNotesOpen}
+                          >
+                            <ProjectNotesForm
+                              key={`${current.project.id}:${current.project.notes ?? ""}`}
+                              project={current.project}
+                              inputId="focusProjectNotes"
+                              onClose={() => setProjectNotesOpen(false)}
+                              onSave={(notes) =>
+                                mutate(
+                                  (workspaceState) =>
+                                    updateProject(
+                                      workspaceState,
+                                      current.project!.id,
+                                      { notes },
+                                    ),
+                                  "Project notes saved.",
+                                )
                               }
-                            >
-                              View project
-                              <ArrowRight size={15} />
-                            </button>
-                          </div>
+                            />
+                          </aside>
                         )}
-                        <p className="focus-reassurance">
-                          {current.item.isPlaceholder
-                            ? "Add a task, or close out the project when you’re done."
-                            : "Everything else can wait."}
-                        </p>
                       </div>
                       <div className="focus-bottom">
                         {current.item.isPlaceholder && current.project ? (
@@ -1596,52 +1643,18 @@ export default function App({
                         </button>
                       )}
                     </div>
-                    <form
-                      className="project-notes"
+                    <ProjectNotesForm
                       key={`${project.id}:${project.notes ?? ""}`}
-                      onSubmit={(event) => {
-                        event.preventDefault();
-                        const notes = String(
-                          new FormData(event.currentTarget).get("projectNotes"),
-                        );
+                      project={project}
+                      inputId="projectNotes"
+                      onSave={(notes) =>
                         mutate(
                           (current) =>
                             updateProject(current, project.id, { notes }),
                           "Project notes saved.",
-                        );
-                      }}
-                    >
-                      <div className="project-notes-heading">
-                        <span className="project-notes-icon" aria-hidden="true">
-                          <NotebookPen size={19} />
-                        </span>
-                        <div>
-                          <h2>Project notes</h2>
-                          <p>Keep the story of your progress in one place.</p>
-                        </div>
-                      </div>
-                      <label className="sr-only" htmlFor="projectNotes">
-                        Project notes
-                      </label>
-                      <textarea
-                        id="projectNotes"
-                        name="projectNotes"
-                        defaultValue={project.notes ?? ""}
-                        maxLength={MAX_PROJECT_NOTES_LENGTH}
-                        rows={6}
-                        placeholder="What’s been done, what changed, decisions, links, or anything you want to remember…"
-                      />
-                      <div className="project-notes-footer">
-                        <p>
-                          These notes stay with this project, even after it’s
-                          completed.
-                        </p>
-                        <button type="submit" className="secondary-button">
-                          <Check size={17} />
-                          Save notes
-                        </button>
-                      </div>
-                    </form>
+                        )
+                      }
+                    />
                     <ProjectFocus
                       state={state}
                       projectId={project.id}
@@ -3234,6 +3247,67 @@ function EmptyState({
       <p>{description}</p>
       {action}
     </div>
+  );
+}
+
+function ProjectNotesForm({
+  project,
+  inputId,
+  onSave,
+  onClose,
+}: {
+  project: Project;
+  inputId: string;
+  onSave: (notes: string) => void;
+  onClose?: () => void;
+}) {
+  return (
+    <form
+      className={`project-notes${onClose ? " focus-project-notes" : ""}`}
+      aria-label={`Project notes for ${project.name}`}
+      onSubmit={(event) => {
+        event.preventDefault();
+        onSave(String(new FormData(event.currentTarget).get("projectNotes")));
+      }}
+    >
+      <div className="project-notes-heading">
+        <span className="project-notes-icon" aria-hidden="true">
+          <NotebookPen size={19} />
+        </span>
+        <div>
+          <h2>Project notes</h2>
+          <p>Keep the story of your progress in one place.</p>
+        </div>
+        {onClose && (
+          <button
+            type="button"
+            className="icon-button project-notes-close"
+            aria-label="Hide project notes"
+            onClick={onClose}
+          >
+            <X size={18} />
+          </button>
+        )}
+      </div>
+      <label className="sr-only" htmlFor={inputId}>
+        Project notes
+      </label>
+      <textarea
+        id={inputId}
+        name="projectNotes"
+        defaultValue={project.notes ?? ""}
+        maxLength={MAX_PROJECT_NOTES_LENGTH}
+        rows={6}
+        placeholder="What’s been done, what changed, decisions, links, or anything you want to remember…"
+      />
+      <div className="project-notes-footer">
+        <p>These notes stay with this project, even after it’s completed.</p>
+        <button type="submit" className="secondary-button">
+          <Check size={17} />
+          Save notes
+        </button>
+      </div>
+    </form>
   );
 }
 

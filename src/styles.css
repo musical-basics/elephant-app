@@ -995,6 +995,14 @@ button {
   gap: 12px;
   margin-bottom: 16px;
 }
+.project-notes-heading > div {
+  min-width: 0;
+}
+.project-notes-close {
+  margin-left: auto;
+  min-width: 44px;
+  min-height: 44px;
+}
 .project-notes-icon {
   display: inline-flex;
   align-items: center;
@@ -1258,6 +1266,30 @@ button {
   margin: auto 0;
   padding: 32px 0 48px;
 }
+.focus-work-area {
+  display: grid;
+  flex: 1 1 auto;
+  min-height: 0;
+  align-items: center;
+}
+.focus-work-area.notes-open {
+  grid-template-columns: minmax(0, 1fr) minmax(280px, 360px);
+  gap: 28px;
+}
+.focus-work-area .focus-center {
+  min-width: 0;
+  margin: 0;
+}
+.focus-notes-side {
+  min-width: 0;
+}
+.focus-project-notes {
+  margin: 20px 0;
+  text-align: left;
+}
+.focus-project-notes textarea {
+  min-height: 220px;
+}
 .focus-symbol {
   display: inline-flex;
   align-items: center;
@@ -1345,6 +1377,13 @@ button {
   flex-shrink: 0;
 }
 .focus-project-link {
+  min-height: 44px;
+  color: var(--accent);
+}
+.focus-notes-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   min-height: 44px;
   color: var(--accent);
 }
@@ -3028,6 +3067,16 @@ button {
   }
   .focus-center {
     padding: 29px 0 36px;
+  }
+  .focus-work-area.notes-open {
+    grid-template-columns: 1fr;
+    gap: 0;
+  }
+  .focus-project-notes {
+    margin: 0 0 24px;
+  }
+  .focus-project-notes textarea {
+    min-height: 138px;
   }
   .focus-symbol {
     height: 45px;
