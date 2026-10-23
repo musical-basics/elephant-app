@@ -162,6 +162,53 @@ test("a timer that expires while the page is closed catches up on reload", async
   ).toBeVisible();
 });
 
+test("a running timer does not keep re-rendering the diary", async ({
+  page,
+}) => {
+  await page.clock.setFixedTime(baseTime);
+  await page.goto("/#/still/diary");
+  await page.getByLabel("New diary entry").fill("A quiet performance check.");
+  await page.getByRole("button", { name: "Save entry", exact: true }).click();
+
+  await page.goto("/#/still/focus");
+  await page.getByRole("button", { name: "Add timer", exact: true }).click();
+  await page.getByRole("button", { name: "Start timer", exact: true }).click();
+  await page.evaluate(() => {
+    const original = Date.prototype.toLocaleTimeString;
+    Object.assign(window, { __diaryTimeFormatCalls: 0 });
+    Date.prototype.toLocaleTimeString = function (...args) {
+      Object.assign(window, {
+        __diaryTimeFormatCalls:
+          ((window as typeof window & { __diaryTimeFormatCalls: number })
+            .__diaryTimeFormatCalls ?? 0) + 1,
+      });
+      return original.apply(this, args as Parameters<typeof original>);
+    };
+  });
+  await page
+    .getByRole("banner")
+    .getByRole("button", { name: "Diary", exact: true })
+    .click();
+  await expect(page.locator(".diary-text")).toHaveText(
+    "A quiet performance check.",
+  );
+  const callsAfterRender = await page.evaluate(
+    () =>
+      (window as typeof window & { __diaryTimeFormatCalls: number })
+        .__diaryTimeFormatCalls,
+  );
+  await page.waitForTimeout(1_600);
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () =>
+          (window as typeof window & { __diaryTimeFormatCalls: number })
+            .__diaryTimeFormatCalls,
+      ),
+    )
+    .toBe(callsAfterRender);
+});
+
 test("timer still works when tab storage is unavailable", async ({ page }) => {
   await page.addInitScript(() => {
     Object.defineProperty(window.sessionStorage, "getItem", {

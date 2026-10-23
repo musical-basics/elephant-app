@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useState } from "react";
 import type { FormEvent, KeyboardEvent } from "react";
 import {
   ArrowLeft,
@@ -88,7 +88,7 @@ type Props = {
   onDelete: (id: string) => void;
 };
 
-export default function Diary({
+function Diary({
   entries,
   view,
   onView,
@@ -111,7 +111,7 @@ export default function Diary({
   const [query, setQuery] = useState("");
   const [page, setPage] = useState(1);
   const today = localDateKey(new Date());
-  const sorted = sortDiary(entries, sort);
+  const sorted = useMemo(() => sortDiary(entries, sort), [entries, sort]);
 
   useEffect(() => {
     // An unsent entry survives leaving the page; it is never synced.
@@ -147,25 +147,36 @@ export default function Diary({
     }
   }
 
-  const counts = new Map<string, number>();
-  for (const entry of entries) {
-    const key = localDateKey(new Date(entry.writtenAt));
-    counts.set(key, (counts.get(key) ?? 0) + 1);
-  }
-  const days = Array.from(
-    { length: 42 },
-    (_, index) =>
-      new Date(
-        month.getFullYear(),
-        month.getMonth(),
-        1 - month.getDay() + index,
+  const counts = useMemo(() => {
+    const result = new Map<string, number>();
+    for (const entry of entries) {
+      const key = localDateKey(new Date(entry.writtenAt));
+      result.set(key, (result.get(key) ?? 0) + 1);
+    }
+    return result;
+  }, [entries]);
+  const days = useMemo(
+    () =>
+      Array.from(
+        { length: 42 },
+        (_, index) =>
+          new Date(
+            month.getFullYear(),
+            month.getMonth(),
+            1 - month.getDay() + index,
+          ),
       ),
+    [month],
   );
-  const dayEntries = sorted.filter(
-    (entry) => localDateKey(new Date(entry.writtenAt)) === selectedDate,
+  const dayEntries = useMemo(
+    () =>
+      sorted.filter(
+        (entry) => localDateKey(new Date(entry.writtenAt)) === selectedDate,
+      ),
+    [selectedDate, sorted],
   );
 
-  const matching = searchDiary(sorted, query);
+  const matching = useMemo(() => searchDiary(sorted, query), [query, sorted]);
   const pageCount = Math.max(1, Math.ceil(matching.length / PAGE_SIZE));
   const currentPage = Math.min(page, pageCount);
   const pageStart = (currentPage - 1) * PAGE_SIZE;
@@ -175,12 +186,12 @@ export default function Diary({
     window.scrollTo(0, 0);
   }
 
+  const editEntry = useCallback(
+    (entry: DiaryEntry) => setEditor({ entry, writtenAt: entry.writtenAt }),
+    [],
+  );
   const note = (entry: DiaryEntry) => (
-    <DiaryNote
-      key={entry.id}
-      entry={entry}
-      onEdit={() => setEditor({ entry, writtenAt: entry.writtenAt })}
-    />
+    <DiaryNote key={entry.id} entry={entry} onEdit={editEntry} />
   );
 
   return (
@@ -489,12 +500,12 @@ export default function Diary({
   );
 }
 
-function DiaryNote({
+const DiaryNote = memo(function DiaryNote({
   entry,
   onEdit,
 }: {
   entry: DiaryEntry;
-  onEdit: () => void;
+  onEdit: (entry: DiaryEntry) => void;
 }) {
   return (
     <article className="diary-note">
@@ -513,7 +524,7 @@ function DiaryNote({
         <button
           className="icon-button"
           aria-label={`Edit diary entry from ${new Date(entry.writtenAt).toLocaleString()}`}
-          onClick={onEdit}
+          onClick={() => onEdit(entry)}
         >
           <Pencil size={15} />
         </button>
@@ -521,7 +532,9 @@ function DiaryNote({
       <p className="diary-text">{entry.text}</p>
     </article>
   );
-}
+});
+
+export default memo(Diary);
 
 function DiaryEditor({
   entry,

@@ -34,10 +34,13 @@ export function useCountdown({
   itemId,
   scope,
   ready,
+  active,
 }: {
   itemId: string | null;
   scope: string;
   ready: boolean;
+  /** Refresh the display only while the countdown is actually on screen. */
+  active: boolean;
 }): {
   timer: null | { durationSeconds: number; status: CountdownStatus };
   remainingSeconds: number;
@@ -77,6 +80,7 @@ export function useCountdown({
 
   useEffect(() => {
     if (
+      !active ||
       !ready ||
       !itemId ||
       stored?.status !== "running" ||
@@ -89,16 +93,26 @@ export function useCountdown({
       if (!saved || saved.itemId !== itemId || saved.scope !== scope) return;
       setNow(Date.now());
     };
-    refresh();
-    const interval = window.setInterval(refresh, 250);
-    document.addEventListener("visibilitychange", refresh);
+    let interval: number | null = null;
+    const stop = () => {
+      if (interval !== null) window.clearInterval(interval);
+      interval = null;
+    };
+    const followVisibility = () => {
+      stop();
+      refresh();
+      if (document.visibilityState === "visible")
+        interval = window.setInterval(refresh, 1_000);
+    };
+    followVisibility();
+    document.addEventListener("visibilitychange", followVisibility);
     window.addEventListener("focus", refresh);
     return () => {
-      window.clearInterval(interval);
-      document.removeEventListener("visibilitychange", refresh);
+      stop();
+      document.removeEventListener("visibilitychange", followVisibility);
       window.removeEventListener("focus", refresh);
     };
-  }, [ready, itemId, scope, stored?.status, commit]);
+  }, [active, ready, itemId, scope, stored?.status, commit]);
 
   const matchingTimer = useCallback(() => {
     const saved = current.current;

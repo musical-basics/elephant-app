@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type {
   FormEvent,
   KeyboardEvent as ReactKeyboardEvent,
@@ -55,9 +55,11 @@ import ProjectSearch from "./components/ProjectSearch";
 import Analytics from "./components/Analytics";
 import ActivityLog from "./components/ActivityLog";
 import Diary from "./components/Diary";
+import type { DiaryView } from "./components/Diary";
 import { ConnectAnotherDevice } from "./components/WorkspaceConnection";
 import { saveLogEntry, removeLogEntry } from "./lib/activityLog";
 import { saveDiaryEntry, removeDiaryEntry, setDiarySort } from "./lib/diary";
+import type { DiaryDraft, DiaryEntry, DiarySort } from "./lib/diary";
 import FocusTimer from "./components/FocusTimer";
 import ProjectFocus from "./components/ProjectFocus";
 import Calendar from "./components/Calendar";
@@ -196,6 +198,7 @@ function countCompletedToday(items: Item[]) {
 }
 
 const COMPLETED_PAGE_SIZE = 25;
+const EMPTY_DIARY_ENTRIES: DiaryEntry[] = [];
 
 function submitTaskOnEnter(event: ReactKeyboardEvent<HTMLTextAreaElement>) {
   if (
@@ -298,6 +301,7 @@ export default function App({
         : (current?.item.id ?? null),
     scope: timerScope,
     ready: workspace.ready,
+    active: screen === "focus",
   });
   const project = state.projects.find((p) => p.id === projectId);
   const remainingProjectItems = state.items.filter(
@@ -321,6 +325,24 @@ export default function App({
     completedPageStart + COMPLETED_PAGE_SIZE,
   );
   const activeProjects = state.projects.filter((p) => p.status === "active");
+  const diaryEntries = state.diary ?? EMPTY_DIARY_ENTRIES;
+  const diaryActions = useMemo(
+    () => ({
+      onView(view: DiaryView) {
+        window.location.hash = `/${design.id}/diary${view === "list" ? "/list" : ""}`;
+      },
+      onSort(sort: DiarySort) {
+        update((current) => setDiarySort(current, sort));
+      },
+      onSave(draft: DiaryDraft, id?: string) {
+        update((current) => saveDiaryEntry(current, draft, id));
+      },
+      onDelete(id: string) {
+        update((current) => removeDiaryEntry(current, id));
+      },
+    }),
+    [design.id, update],
+  );
 
   useEffect(() => {
     setCompletedPage((page) => Math.min(page, completedPageCount));
@@ -2119,21 +2141,10 @@ export default function App({
 
               {screen === "diary" && (
                 <Diary
-                  entries={state.diary ?? []}
+                  entries={diaryEntries}
                   view={projectId === "list" ? "list" : "calendar"}
-                  onView={(view) =>
-                    navigate("diary", view === "list" ? "list" : undefined)
-                  }
                   sort={state.settings.diarySort ?? "newest"}
-                  onSort={(sort) =>
-                    update((current) => setDiarySort(current, sort))
-                  }
-                  onSave={(draft, id) =>
-                    update((current) => saveDiaryEntry(current, draft, id))
-                  }
-                  onDelete={(id) =>
-                    update((current) => removeDiaryEntry(current, id))
-                  }
+                  {...diaryActions}
                 />
               )}
 
