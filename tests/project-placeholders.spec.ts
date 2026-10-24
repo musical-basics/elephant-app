@@ -308,12 +308,16 @@ test("blank placeholders survive JSON backup and restore without inflating analy
     ...original,
     focusMode: original.focusMode ?? null,
     diary: original.diary ?? [],
+    routines: original.routines ?? [],
+    weeklyItems: original.weeklyItems ?? [],
   });
   await page.reload();
   expect(await readState(page)).toEqual({
     ...original,
     focusMode: original.focusMode ?? null,
     diary: original.diary ?? [],
+    routines: original.routines ?? [],
+    weeklyItems: original.weeklyItems ?? [],
   });
   await page.goto(`/#/still/project/${projectId}`);
   await expect(

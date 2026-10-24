@@ -1,0 +1,310 @@
+.theme .routine-intro {
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.75;
+  margin: -10px 0 30px;
+  max-width: 560px;
+}
+.routine-section {
+  margin-bottom: 46px;
+}
+.routine-section-heading {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 18px;
+}
+.routine-section-heading h2 {
+  font-family: var(--heading);
+  font-size: 25px;
+  font-weight: 400;
+}
+.theme .routine-section-heading p {
+  color: var(--muted);
+  font-size: 11px;
+  margin-top: 6px;
+}
+.routine-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+  gap: 14px;
+}
+.routine-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+  padding: 18px;
+  border: 1px solid var(--line);
+  border-top: 3px solid var(--log-color);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+.routine-card-top {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+.routine-card-top h3 {
+  flex: 1;
+  min-width: 0;
+  padding-top: 6px;
+  font-size: 15px;
+  font-weight: 500;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+.routine-card-top .icon-button {
+  margin: -4px -8px 0 0;
+  flex-shrink: 0;
+}
+.routine-type {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  flex-shrink: 0;
+  border-radius: 9px;
+  color: var(--log-color);
+  background: var(--log-bg);
+}
+.theme .routine-meta,
+.theme .routine-last {
+  color: var(--muted);
+  font-size: 11px;
+}
+.theme .routine-progress {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+}
+.routine-progress strong {
+  font-weight: 600;
+}
+.routine-goal {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  border-radius: 99px;
+  color: var(--log-color);
+  background: var(--log-bg);
+  font-size: 10px;
+  font-weight: 600;
+}
+.routine-track {
+  height: 4px;
+  overflow: hidden;
+  border-radius: 4px;
+  background: var(--soft);
+}
+.routine-track span {
+  display: block;
+  height: 100%;
+  background: var(--log-color);
+}
+.routine-log {
+  width: 100%;
+  min-height: 44px;
+  margin-top: auto;
+}
+.routine-logged {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px 10px;
+  font-size: 11px;
+  line-height: 1.5;
+}
+.routine-logged .text-button {
+  min-height: 36px;
+  font-size: 11px;
+}
+.routine-empty {
+  padding: 34px 20px;
+  border: 1px dashed var(--line);
+  border-radius: var(--radius);
+  color: var(--muted);
+  text-align: center;
+}
+.routine-empty > svg {
+  margin-bottom: 12px;
+  color: var(--accent);
+}
+.routine-empty h3 {
+  font-family: var(--heading);
+  font-size: 22px;
+  font-weight: 400;
+  color: var(--ink);
+}
+.theme .routine-empty p {
+  max-width: 470px;
+  margin: 10px auto 0;
+  font-size: 12px;
+  line-height: 1.7;
+}
+.routine-empty > div {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: center;
+  gap: 14px;
+  margin-top: 18px;
+}
+.weekly-empty {
+  padding: 26px 20px;
+}
+.theme .routine-footnote,
+.theme .routine-footnote p {
+  margin-top: 14px;
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.6;
+}
+.theme .weekly-footnote {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px 14px;
+}
+.weekly-footnote p {
+  margin: 0 !important;
+}
+.weekly-footnote .text-button {
+  font-size: 11px;
+}
+.weekly-list {
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  list-style: none;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+.weekly-list li {
+  display: grid;
+  grid-template-columns: 150px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--line);
+}
+.weekly-list li:last-child {
+  border-bottom: 0;
+}
+.weekly-when {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  color: var(--muted);
+  font-size: 12px;
+}
+.weekly-when strong {
+  color: var(--ink);
+  font-weight: 600;
+}
+.weekly-title strong {
+  display: block;
+  font-size: 14px;
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+.weekly-title small {
+  display: block;
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 10px;
+}
+.routine-duration {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+  margin: 0 0 22px;
+  padding: 0;
+  border: 0;
+}
+.routine-duration legend {
+  padding: 0;
+  margin-bottom: 10px;
+  font-size: 11px;
+  font-weight: 500;
+}
+.sheet-form .routine-duration label {
+  margin-bottom: 0;
+  color: var(--muted);
+}
+.routine-delete-confirm {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  margin-top: 16px;
+  font-size: 12px;
+}
+.routine-delete-confirm p {
+  width: 100%;
+}
+@media (max-width: 650px) {
+  .theme .routine-intro {
+    margin-top: 0;
+    font-size: 12px;
+  }
+  .routine-section-heading {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .routine-grid {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+  /* Phones put Log now beside the details so the list stays short. */
+  .routine-card {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 3px 12px;
+    padding: 12px 14px;
+  }
+  .routine-card > * {
+    grid-column: 1;
+  }
+  .routine-card > .routine-card-top,
+  .routine-card > .routine-logged {
+    grid-column: 1 / -1;
+  }
+  .routine-card > .routine-log {
+    grid-column: 2;
+    grid-row: 2 / span 3;
+    width: auto;
+    margin: 0;
+    padding: 0 16px;
+  }
+  .routine-card-top h3 {
+    padding-top: 5px;
+    font-size: 14px;
+  }
+  .weekly-list li {
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 6px 10px;
+    padding: 12px 14px;
+  }
+  .weekly-when {
+    grid-column: 1;
+    flex-direction: row;
+    gap: 8px;
+  }
+  .weekly-title {
+    grid-column: 1;
+  }
+  .weekly-list li .icon-button {
+    grid-column: 2;
+    grid-row: 1 / span 2;
+  }
+}

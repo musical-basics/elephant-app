@@ -11,6 +11,7 @@ import {
   Music2,
   Pencil,
   Plus,
+  Repeat,
   RotateCcw,
   RefreshCw,
   Trash2,
@@ -22,18 +23,26 @@ import { PIANO_STUDIO_URL } from "../lib/pianoLessons";
 import type { LessonCompletion, PianoLesson } from "../lib/pianoLessons";
 import { usePianoLessons } from "../lib/usePianoLessons";
 import type { LocalPianoConnection } from "../lib/localPianoConnection";
+import { weeklyOccurrences } from "../lib/routine";
+import type { WeeklyItem, WeeklyOccurrence } from "../lib/routine";
 import "./Calendar.css";
 
-type CalendarEntry = ScheduledItem | PianoLesson;
+type CalendarEntry = ScheduledItem | PianoLesson | WeeklyOccurrence;
 function isLesson(item: CalendarEntry): item is PianoLesson {
   return "source" in item && item.source === "piano-studio";
 }
+function isWeekly(item: CalendarEntry): item is WeeklyOccurrence {
+  return "source" in item && item.source === "weekly";
+}
 function isCompleted(item: CalendarEntry): boolean {
+  if (isWeekly(item)) return false;
   return isLesson(item) ? item.status === "completed" : !!item.completedAt;
 }
 
 export default function Calendar({
   items,
+  weeklyItems,
+  onOpenRoutine,
   accessToken,
   localPiano,
   now,
@@ -44,6 +53,9 @@ export default function Calendar({
   onNotice,
 }: {
   items: ScheduledItem[];
+  /** Repeating items from Routine, shown every week but never stored per date. */
+  weeklyItems: WeeklyItem[];
+  onOpenRoutine: () => void;
   accessToken: string | null;
   localPiano: LocalPianoConnection;
   now: number;
@@ -82,6 +94,11 @@ export default function Calendar({
   const ordered: CalendarEntry[] = [
     ...items,
     ...(piano.feed?.lessons ?? []),
+    ...weeklyOccurrences(
+      weeklyItems,
+      first,
+      Math.round((last.getTime() - first.getTime()) / 86_400_000) + 1,
+    ),
   ].sort(
     (a, b) =>
       Date.parse(a.scheduledAt) - Date.parse(b.scheduledAt) ||
@@ -93,6 +110,8 @@ export default function Calendar({
   const upcoming = ordered
     .filter(
       (item) =>
+        // Weekly items are predictable; keep this list for one-off plans.
+        !isWeekly(item) &&
         !isCompleted(item) &&
         Date.parse(item.scheduledAt) >= now &&
         localDateKey(new Date(item.scheduledAt)) !== selectedDate,
@@ -285,7 +304,7 @@ export default function Calendar({
             <ol className="schedule-list">
               {selectedItems.map((item) => (
                 <li
-                  className={`schedule-row${isCompleted(item) ? " is-completed" : ""}${isLesson(item) ? " is-lesson" : ""}`}
+                  className={`schedule-row${isCompleted(item) ? " is-completed" : ""}${isLesson(item) ? " is-lesson" : ""}${isWeekly(item) ? " is-weekly" : ""}`}
                   key={item.id}
                 >
                   <time dateTime={item.scheduledAt}>
@@ -295,7 +314,23 @@ export default function Calendar({
                     })}
                   </time>
                   <div className="schedule-item-body">
-                    {isLesson(item) ? (
+                    {isWeekly(item) ? (
+                      <>
+                        <button
+                          className="schedule-title"
+                          onClick={onOpenRoutine}
+                        >
+                          {item.title}
+                        </button>
+                        <p className="schedule-weekly-source">
+                          <Repeat size={12} /> Weekly · every{" "}
+                          {new Date(item.scheduledAt).toLocaleDateString(
+                            undefined,
+                            { weekday: "long" },
+                          )}
+                        </p>
+                      </>
+                    ) : isLesson(item) ? (
                       <>
                         <a
                           className="schedule-title"

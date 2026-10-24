@@ -177,32 +177,33 @@ test("Do now shows completed items from the current project", async ({
 test("project notes sit beside the steps on wide screens and above them when narrow", async ({
   page,
 }) => {
+  // Measure everything in one frame after fonts settle, so late font swaps
+  // cannot shift one box between measurements.
+  const layout = () =>
+    page.evaluate(async () => {
+      await document.fonts.ready;
+      const box = (selector: string) =>
+        document.querySelector(selector)!.getBoundingClientRect().toJSON();
+      return {
+        notes: box(".project-notes"),
+        steps: box(".project-items"),
+        column: box(".project-steps-column"),
+        fits: document.documentElement.scrollWidth <= window.innerWidth,
+      };
+    });
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto("/#/still/project/demo-dinner");
-  const notes = page.locator(".project-notes");
-  const steps = page.locator(".project-items");
-  await expect(notes).toBeVisible();
-  let notesBox = (await notes.boundingBox())!;
-  let stepsBox = (await steps.boundingBox())!;
-  expect(notesBox.x).toBeGreaterThan(stepsBox.x + stepsBox.width);
-  expect(notesBox.width).toBeGreaterThanOrEqual(280);
-  expect(notesBox.width).toBeLessThanOrEqual(360);
+  await expect(page.locator(".project-notes")).toBeVisible();
+  let { notes, steps, column, fits } = await layout();
+  expect(notes.x).toBeGreaterThan(steps.x + steps.width);
+  expect(notes.width).toBeGreaterThanOrEqual(280);
+  expect(notes.width).toBeLessThanOrEqual(360);
   // The notes column starts level with the steps column.
-  expect(
-    Math.abs(
-      notesBox.y -
-        (await page.locator(".project-steps-column").boundingBox())!.y,
-    ),
-  ).toBeLessThan(2);
-  expect(
-    await page.evaluate(
-      () => document.documentElement.scrollWidth <= window.innerWidth,
-    ),
-  ).toBe(true);
+  expect(Math.abs(notes.y - column.y)).toBeLessThan(2);
+  expect(fits).toBe(true);
 
   await page.setViewportSize({ width: 1000, height: 900 });
-  notesBox = (await notes.boundingBox())!;
-  stepsBox = (await steps.boundingBox())!;
-  expect(notesBox.y + notesBox.height).toBeLessThan(stepsBox.y);
-  expect(Math.abs(notesBox.x - stepsBox.x)).toBeLessThan(2);
+  ({ notes, steps } = await layout());
+  expect(notes.y + notes.height).toBeLessThan(steps.y);
+  expect(Math.abs(notes.x - steps.x)).toBeLessThan(2);
 });

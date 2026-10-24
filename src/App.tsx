@@ -35,6 +35,7 @@ import {
   Moon,
   NotebookPen,
   Pencil,
+  Repeat,
   Plus,
   RotateCcw,
   Scissors,
@@ -54,10 +55,20 @@ import CompletionCelebration from "./components/CompletionCelebration";
 import ProjectSearch from "./components/ProjectSearch";
 import Analytics from "./components/Analytics";
 import ActivityLog from "./components/ActivityLog";
+import Routine from "./components/Routine";
 import Diary from "./components/Diary";
 import type { DiaryView } from "./components/Diary";
 import { ConnectAnotherDevice } from "./components/WorkspaceConnection";
 import { saveLogEntry, removeLogEntry } from "./lib/activityLog";
+import {
+  addStarterRoutine,
+  logRoutine,
+  removeRoutine,
+  removeWeeklyItem,
+  routineProgress,
+  saveRoutine,
+  saveWeeklyItem,
+} from "./lib/routine";
 import { saveDiaryEntry, removeDiaryEntry, setDiarySort } from "./lib/diary";
 import type { DiaryDraft, DiaryEntry, DiarySort } from "./lib/diary";
 import FocusTimer from "./components/FocusTimer";
@@ -121,6 +132,7 @@ type Screen =
   | "analytics"
   | "calendar"
   | "log"
+  | "routine"
   | "diary"
   | "settings"
   | "queue";
@@ -171,6 +183,7 @@ function readRoute(): Route {
       "analytics",
       "calendar",
       "log",
+      "routine",
       "diary",
       "settings",
       "queue",
@@ -625,6 +638,12 @@ export default function App({
     { screen: "calendar", label: "Calendar", icon: <CalendarDays size={20} /> },
     { screen: "log", label: "Log", icon: <ClipboardList size={20} /> },
     {
+      screen: "routine",
+      label: "Routine",
+      icon: <Repeat size={20} />,
+      desktopOnly: true,
+    },
+    {
       screen: "diary",
       label: "Diary",
       icon: <NotebookPen size={20} />,
@@ -1027,6 +1046,19 @@ export default function App({
                         <ArrowUpRight size={20} />
                       </button>
                       <button
+                        className="home-link"
+                        onClick={() => navigate("routine")}
+                      >
+                        <span className="link-icon">
+                          <Repeat size={21} />
+                        </span>
+                        <span>
+                          <strong>Routine</strong>
+                          <small>Log the everyday things</small>
+                        </span>
+                        <ArrowUpRight size={20} />
+                      </button>
+                      <button
                         className="home-link settings-home-link"
                         onClick={() => navigate("settings")}
                       >
@@ -1343,6 +1375,8 @@ export default function App({
               {screen === "calendar" && (
                 <Calendar
                   items={state.scheduledItems}
+                  weeklyItems={state.weeklyItems ?? []}
+                  onOpenRoutine={() => navigate("routine")}
                   accessToken={workspace.accessToken}
                   localPiano={localPiano}
                   now={now}
@@ -2151,12 +2185,48 @@ export default function App({
               {screen === "log" && (
                 <ActivityLog
                   state={state}
+                  onOpenRoutine={() => navigate("routine")}
                   onSave={(draft, id) =>
                     update((current) => saveLogEntry(current, draft, id))
                   }
                   onDelete={(id) =>
                     update((current) => removeLogEntry(current, id))
                   }
+                />
+              )}
+
+              {screen === "routine" && (
+                <Routine
+                  routines={state.routines ?? []}
+                  weeklyItems={state.weeklyItems ?? []}
+                  progress={routineProgress(state, now)}
+                  now={now}
+                  onLog={(routineId) => {
+                    const entryId = crypto.randomUUID();
+                    update((current) =>
+                      logRoutine(current, routineId, entryId),
+                    );
+                    return entryId;
+                  }}
+                  onUndo={(entryId) =>
+                    update((current) => removeLogEntry(current, entryId))
+                  }
+                  onSaveRoutine={(draft, id) =>
+                    update((current) => saveRoutine(current, draft, id))
+                  }
+                  onDeleteRoutine={(id) =>
+                    update((current) => removeRoutine(current, id))
+                  }
+                  onAddStarter={() =>
+                    mutate(addStarterRoutine, "Your usual routine is ready.")
+                  }
+                  onSaveWeekly={(draft, id) =>
+                    update((current) => saveWeeklyItem(current, draft, id))
+                  }
+                  onDeleteWeekly={(id) =>
+                    update((current) => removeWeeklyItem(current, id))
+                  }
+                  onOpenCalendar={() => navigate("calendar")}
                 />
               )}
 
@@ -2794,9 +2864,9 @@ export default function App({
                     : modal.kind === "project"
                       ? "Give your project a name. We’ll take it one step at a time."
                       : modal.kind === "import"
-                        ? `This backup has ${modal.data.projects.length} projects, ${modal.data.items.length} items, ${modal.data.scheduledItems.length} scheduled items, ${modal.data.activityLog?.length ?? 0} logged activities, and ${modal.data.diary?.length ?? 0} diary entries. It will replace all current workspace data.`
+                        ? `This backup has ${modal.data.projects.length} projects, ${modal.data.items.length} items, ${modal.data.scheduledItems.length} scheduled items, ${modal.data.activityLog?.length ?? 0} logged activities, ${modal.data.diary?.length ?? 0} diary entries, and ${(modal.data.routines?.length ?? 0) + (modal.data.weeklyItems?.length ?? 0)} routine items. It will replace all current workspace data.`
                         : modal.kind === "reset"
-                          ? "This deletes all items, projects, logged activities, diary entries, and history in this workspace. Export a backup first if you want to keep them."
+                          ? "This deletes all items, projects, logged activities, diary entries, routine items, and history in this workspace. Export a backup first if you want to keep them."
                           : modal.kind === "delete"
                             ? modal.item.completedAt
                               ? "This permanently removes the item from your completed history. This can’t be undone."
@@ -3220,6 +3290,8 @@ export default function App({
                     activityLog: [],
                     focusMode: null,
                     diary: [],
+                    routines: [],
+                    weeklyItems: [],
                     profile: state.profile,
                     settings: state.settings,
                   });
@@ -3259,6 +3331,8 @@ export default function App({
                         activityLog: modal.data.activityLog ?? [],
                         focusMode: modal.data.focusMode ?? null,
                         diary: modal.data.diary ?? [],
+                        routines: modal.data.routines ?? [],
+                        weeklyItems: modal.data.weeklyItems ?? [],
                       });
                       setModal(null);
                       navigate("home");

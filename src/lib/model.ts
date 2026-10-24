@@ -4,6 +4,8 @@ import { LOG_CATEGORIES, logCompletedTask } from './activityLog.js';
 import type { LogEntry, LogCategory } from './activityLog';
 import { DIARY_SORTS, MAX_DIARY_LENGTH } from './diary.js';
 import type { DiaryEntry, DiarySort } from './diary';
+import { checkRoutine, checkWeeklyItem } from './routine.js';
+import type { RoutineDraft, RoutineItem, WeeklyItem } from './routine';
 
 export type ProjectStatus = 'active' | 'inactive' | 'completed';
 
@@ -51,6 +53,8 @@ export interface AppState {
   activityLog?: LogEntry[];
   focusMode?: FocusModeState | null;
   diary?: DiaryEntry[];
+  routines?: RoutineItem[];
+  weeklyItems?: WeeklyItem[];
 }
 
 export interface ResolvedQueueEntry {
@@ -587,7 +591,7 @@ export function validateImport(input: unknown): AppState {
     if (entry.inferred !== undefined && typeof entry.inferred !== 'boolean') throw new Error('Invalid backup: log inference flag must be boolean.');
     const title = string(entry.title, 'log title');
     if (title.length > 500) throw new Error('Invalid backup: log title is too long.');
-    return { id: string(entry.id, 'log ID'), title, category: entry.category as LogCategory, startedAt, endedAt, createdAt: timestamp(entry.createdAt, 'log createdAt'), ...(entry.taskId === undefined ? {} : { taskId: string(entry.taskId, 'log task ID') }), ...(entry.scheduledItemId === undefined ? {} : { scheduledItemId: string(entry.scheduledItemId, 'log scheduled item ID') }), ...(entry.inferred === undefined ? {} : { inferred: entry.inferred }) };
+    return { id: string(entry.id, 'log ID'), title, category: entry.category as LogCategory, startedAt, endedAt, createdAt: timestamp(entry.createdAt, 'log createdAt'), ...(entry.taskId === undefined ? {} : { taskId: string(entry.taskId, 'log task ID') }), ...(entry.scheduledItemId === undefined ? {} : { scheduledItemId: string(entry.scheduledItemId, 'log scheduled item ID') }), ...(entry.inferred === undefined ? {} : { inferred: entry.inferred }), ...(entry.routineId === undefined ? {} : { routineId: string(entry.routineId, 'log routine ID') }) };
   });
   if (activityLog) unique(activityLog, 'log entry');
   let focusMode: FocusModeState | null | undefined;
@@ -608,7 +612,25 @@ export function validateImport(input: unknown): AppState {
     return { id: string(entry.id, 'diary entry ID'), text, writtenAt: timestamp(entry.writtenAt, 'diary entry time'), createdAt: timestamp(entry.createdAt, 'diary entry createdAt'), ...(entry.updatedAt === undefined ? {} : { updatedAt: timestamp(entry.updatedAt, 'diary entry updatedAt') }) };
   });
   if (diary) unique(diary, 'diary entry');
-  const state: AppState = { version: 1, profile: { name: string(profile.name, 'profile name', true), ...(avatarUrl ? { avatarUrl } : {}) }, settings: { showMasterList: settings.showMasterList, ...(settings.diarySort === undefined ? {} : { diarySort: settings.diarySort as DiarySort }) }, projects, items, queue, scheduledItems, activeReminder, ...(activityLog === undefined ? {} : { activityLog }), ...(focusMode === undefined ? {} : { focusMode }), ...(diary === undefined ? {} : { diary }) };
+  // Routine and weekly items share their editors' rules; report them as backup errors.
+  const checked = <T>(check: () => T): T => {
+    try { return check(); } catch (error) { throw new Error(`Invalid backup: ${(error as Error).message}`); }
+  };
+  const routines = data.routines === undefined ? undefined : array(data.routines, 'routines').map((value): RoutineItem => {
+    const routine = record(value, 'routine item');
+    string(routine.title, 'routine title');
+    const fields = checked(() => checkRoutine(routine as unknown as RoutineDraft));
+    return { id: string(routine.id, 'routine item ID'), ...fields, createdAt: timestamp(routine.createdAt, 'routine item createdAt') };
+  });
+  if (routines) unique(routines, 'routine item');
+  const weeklyItems = data.weeklyItems === undefined ? undefined : array(data.weeklyItems, 'weekly items').map((value): WeeklyItem => {
+    const item = record(value, 'weekly item');
+    string(item.title, 'weekly item title');
+    const fields = checked(() => checkWeeklyItem(item as unknown as WeeklyItem));
+    return { id: string(item.id, 'weekly item ID'), ...fields, createdAt: timestamp(item.createdAt, 'weekly item createdAt') };
+  });
+  if (weeklyItems) unique(weeklyItems, 'weekly item');
+  const state: AppState = { version: 1, profile: { name: string(profile.name, 'profile name', true), ...(avatarUrl ? { avatarUrl } : {}) }, settings: { showMasterList: settings.showMasterList, ...(settings.diarySort === undefined ? {} : { diarySort: settings.diarySort as DiarySort }) }, projects, items, queue, scheduledItems, activeReminder, ...(activityLog === undefined ? {} : { activityLog }), ...(focusMode === undefined ? {} : { focusMode }), ...(diary === undefined ? {} : { diary }), ...(routines === undefined ? {} : { routines }), ...(weeklyItems === undefined ? {} : { weeklyItems }) };
   const resolved = resolveQueue(state);
   if (resolved.length !== queue.length) throw new Error('Invalid backup: queue contains a missing, inactive, duplicate, completed, or excess task.');
   const queuedErrands = new Set(queue.flatMap((slot) => slot.kind === 'errand' ? [slot.itemId] : []));

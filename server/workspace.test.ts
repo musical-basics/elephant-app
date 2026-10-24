@@ -86,6 +86,8 @@ it("passes an explicit expected revision and ignores client-supplied workspace I
           activityLog: [],
           focusMode: null,
           diary: [],
+          routines: [],
+          weeklyItems: [],
         },
         p_expected_revision: 4,
       });
@@ -100,6 +102,8 @@ it("passes an explicit expected revision and ignores client-supplied workspace I
         activityLog: [],
         focusMode: null,
         diary: [],
+        routines: [],
+        weeklyItems: [],
       },
       expectedRevision: 4,
       workspaceId: "someone-else",
@@ -237,6 +241,8 @@ it("preserves focus mode omitted by an older tab, and accepts an explicit stop",
             focusMode: null,
             activityLog: [],
             diary: [],
+            routines: [],
+            weeklyItems: [],
           },
           expectedRevision: 5,
         }),
@@ -260,6 +266,8 @@ it("preserves diary entries omitted by an older tab, and accepts an explicit emp
     activityLog: [],
     focusMode: null,
     diary,
+    routines: [],
+    weeklyItems: [],
   };
   const fetchMock = vi.fn(async (input, init) => {
     if (String(input).endsWith("/elephant_read_desktop"))
@@ -314,6 +322,57 @@ it("preserves a diary sort preference omitted by an older tab", async () => {
         request({
           data: {
             ...createEmptyState(),
+            activityLog: [],
+            focusMode: null,
+            diary: [],
+          },
+          expectedRevision: 4,
+        }),
+      )
+    ).status,
+  ).toBe(200);
+  expect(fetchMock).toHaveBeenCalledTimes(2);
+});
+
+it("preserves routine and weekly items omitted by an older tab", async () => {
+  const routines = [
+    {
+      id: "walk",
+      title: "Walk the dog",
+      category: "other",
+      durationMinutes: 30,
+      createdAt: "2026-10-20T12:00:00.000Z",
+    },
+  ];
+  const weeklyItems = [
+    {
+      id: "study",
+      title: "Bible study",
+      weekday: 1,
+      time: "21:00",
+      createdAt: "2026-10-20T12:00:00.000Z",
+    },
+  ];
+  const fetchMock = vi.fn(async (input, init) => {
+    if (String(input).endsWith("/elephant_read_desktop"))
+      return Response.json({
+        data: { ...createEmptyState(), routines, weeklyItems },
+        revision: 4,
+      });
+    expect(JSON.parse(init.body)).toMatchObject({
+      p_data: { routines, weeklyItems },
+      p_expected_revision: 4,
+    });
+    return Response.json({ revision: 5 });
+  });
+  vi.stubGlobal("fetch", fetchMock);
+  expect(
+    (
+      await PUT(
+        request({
+          data: {
+            ...createEmptyState(),
+            settings: { showMasterList: false, diarySort: "newest" },
             activityLog: [],
             focusMode: null,
             diary: [],

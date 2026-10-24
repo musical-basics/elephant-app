@@ -93,9 +93,9 @@ export async function PUT(request: Request) {
   try {
     // Older open tabs may omit newer fields. Preserve them while
     // retaining the caller's revision so a concurrent write still conflicts.
-    const missing = (["activityLog", "focusMode", "diary"] as const).filter(
-      (field) => body.data[field] === undefined,
-    );
+    const missing = (
+      ["activityLog", "focusMode", "diary", "routines", "weeklyItems"] as const
+    ).filter((field) => body.data[field] === undefined);
     const missingSettings = (["diarySort"] as const).filter(
       (field) => body.data.settings[field] === undefined,
     );

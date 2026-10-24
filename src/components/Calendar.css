@@ -60,6 +60,15 @@ a.schedule-title {
   align-items: center;
   gap: 5px;
 }
+.schedule-row.is-weekly .schedule-item-body {
+  border-left-style: dashed;
+  border-left-color: var(--accent);
+}
+.schedule-weekly-source {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
 .theme .lesson-complete-when {
   font-size: 13px;
   font-weight: 500;

@@ -9,6 +9,7 @@ import {
   GripHorizontal,
   Moon,
   Plus,
+  Repeat,
   Utensils,
 } from "lucide-react";
 import Sheet from "./Sheet";
@@ -56,6 +57,7 @@ const hourLabel = (hour: number) =>
 
 type Props = {
   state: AppState;
+  onOpenRoutine: () => void;
   onSave: (draft: LogDraft, id?: string) => void;
   onDelete: (id: string) => void;
 };
@@ -69,7 +71,12 @@ type Drag = {
   draft: LogEntry;
 };
 
-export default function ActivityLog({ state, onSave, onDelete }: Props) {
+export default function ActivityLog({
+  state,
+  onOpenRoutine,
+  onSave,
+  onDelete,
+}: Props) {
   const [week, setWeek] = useState(() => weekStart(new Date()));
   const [editor, setEditor] = useState<{
     entry?: LogEntry;
@@ -253,6 +260,13 @@ export default function ActivityLog({ state, onSave, onDelete }: Props) {
           onClick={() => setEditor({ category: "exercise" })}
         >
           <Dumbbell size={17} /> Exercise
+        </button>
+        <button
+          className="text-button log-routine-link"
+          onClick={onOpenRoutine}
+        >
+          <Repeat size={16} /> Your routine
+          <ArrowRight size={14} />
         </button>
       </div>
       <div className="log-week-toolbar">

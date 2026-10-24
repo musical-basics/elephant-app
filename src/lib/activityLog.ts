@@ -19,6 +19,8 @@ export interface LogEntry {
   taskId?: string;
   scheduledItemId?: string;
   inferred?: boolean;
+  /** Set when logged from a Routine item, so weekly counts follow renames. */
+  routineId?: string;
 }
 export type LogDraft = Pick<
   LogEntry,
