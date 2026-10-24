@@ -28,10 +28,15 @@ for (const [design, title, minutes, seconds, display] of [
     await page.setViewportSize({ width: 320, height: 844 });
     await page.clock.setFixedTime(baseTime);
     await openTask(page, design, title);
+    // The timer is always offered; nothing is saved until it starts.
     await expect(
       page.getByRole("region", { name: "Task countdown" }),
-    ).toHaveCount(0);
-    await page.getByRole("button", { name: "Add timer", exact: true }).click();
+    ).toBeVisible();
+    expect(
+      await page.evaluate(() =>
+        sessionStorage.getItem("elephant.countdown.v1"),
+      ),
+    ).toBeNull();
     await expect(page.getByLabel("Timer minutes", { exact: true })).toHaveValue(
       minutes,
     );
@@ -53,15 +58,15 @@ for (const [design, title, minutes, seconds, display] of [
       ),
     ).toBe(true);
     await page
-      .getByRole("button", { name: "Remove timer", exact: true })
+      .getByRole("button", { name: "Reset timer", exact: true })
       .click();
     await expect(page.getByRole("timer")).toHaveCount(0);
-    await expect(
-      page.getByRole("button", { name: "Add timer", exact: true }),
-    ).toBeVisible();
+    await expect(page.getByLabel("Timer minutes", { exact: true })).toHaveValue(
+      minutes,
+    );
     await page.reload();
     await expect(
-      page.getByRole("button", { name: "Add timer", exact: true }),
+      page.getByRole("button", { name: "Start timer", exact: true }),
     ).toBeVisible();
   });
 }
@@ -71,7 +76,6 @@ test("timer pauses, resumes, survives navigation/reload, and continues into over
 }) => {
   await page.clock.setFixedTime(baseTime);
   await openTask(page, "still", "5 minutes cleaning");
-  await page.getByRole("button", { name: "Add timer", exact: true }).click();
   await page.getByRole("button", { name: "Start timer", exact: true }).click();
   await page.clock.setFixedTime(baseTime + 2_000);
   await expect(page.getByRole("timer")).toHaveText("04:58");
@@ -137,7 +141,6 @@ test("timer pauses, resumes, survives navigation/reload, and continues into over
   await expect(
     page.getByRole("heading", { name: "Water the plants", exact: true }),
   ).toBeVisible();
-  await page.getByRole("button", { name: "Add timer", exact: true }).click();
   await expect(page.getByLabel("Timer minutes", { exact: true })).toHaveValue(
     "5",
   );
@@ -151,7 +154,6 @@ test("a timer that expires while the page is closed catches up on reload", async
 }) => {
   await page.clock.setFixedTime(baseTime);
   await openTask(page, "still", "5 minutes cleaning");
-  await page.getByRole("button", { name: "Add timer", exact: true }).click();
   await page.getByRole("button", { name: "Start timer", exact: true }).click();
   await page.goto("about:blank");
   await page.clock.setFixedTime(baseTime + 600_000);
@@ -171,7 +173,6 @@ test("a running timer does not keep re-rendering the diary", async ({
   await page.getByRole("button", { name: "Save entry", exact: true }).click();
 
   await page.goto("/#/still/focus");
-  await page.getByRole("button", { name: "Add timer", exact: true }).click();
   await page.getByRole("button", { name: "Start timer", exact: true }).click();
   await page.evaluate(() => {
     const original = Date.prototype.toLocaleTimeString;
@@ -229,15 +230,14 @@ test("timer still works when tab storage is unavailable", async ({ page }) => {
   });
   await page.clock.setFixedTime(baseTime);
   await openTask(page, "still", "One second of focus");
-  await page.getByRole("button", { name: "Add timer", exact: true }).click();
   await page.getByLabel("Timer minutes", { exact: true }).fill("0");
   await page.getByLabel("Timer seconds", { exact: true }).fill("1");
   await page.getByRole("button", { name: "Start timer", exact: true }).click();
   await page.clock.setFixedTime(baseTime + 2_000);
   await expect(page.getByRole("timer")).toHaveText("-0:01");
-  await page.getByRole("button", { name: "Remove timer", exact: true }).click();
+  await page.getByRole("button", { name: "Reset timer", exact: true }).click();
   await expect(
-    page.getByRole("button", { name: "Add timer", exact: true }),
+    page.getByRole("button", { name: "Start timer", exact: true }),
   ).toBeVisible();
 });
 
@@ -259,7 +259,6 @@ for (const design of ["still", "ember", "orbit", "tide", "pop"]) {
     await page.setViewportSize({ width: 320, height: 844 });
     await page.clock.setFixedTime(baseTime);
     await openTask(page, design, "5 minutes cleaning");
-    await page.getByRole("button", { name: "Add timer", exact: true }).click();
     await page
       .getByRole("button", { name: "Start timer", exact: true })
       .click();
@@ -313,7 +312,6 @@ test("completion cancellation resumes only a previously running timer and exclud
 }) => {
   await page.clock.setFixedTime(baseTime);
   await openTask(page, "still", "5 minutes cleaning");
-  await page.getByRole("button", { name: "Add timer", exact: true }).click();
   await page.getByRole("button", { name: "Start timer", exact: true }).click();
   await page.clock.setFixedTime(baseTime + 330_000);
   await page.getByRole("button", { name: /Completed!/ }).click();
@@ -352,7 +350,6 @@ test("a timer that has not been started completes without a time prompt", async 
   page,
 }) => {
   await openTask(page, "still", "5 minutes cleaning");
-  await page.getByRole("button", { name: "Add timer", exact: true }).click();
   await page.getByRole("button", { name: /Completed!/ }).click();
   await expect(
     page.getByRole("heading", { name: "Water the plants", exact: true }),

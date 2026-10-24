@@ -127,9 +127,7 @@ for (const design of ["still", "ember", "orbit", "tide", "pop"]) {
     await expect(page.getByRole("button", { name: /Completed!/ })).toHaveCount(
       0,
     );
-    await expect(page.locator(".focus-timer, .focus-timer-invite")).toHaveCount(
-      0,
-    );
+    await expect(page.locator(".focus-timer")).toHaveCount(0);
     for (const name of ["Add a task", "Complete project"]) {
       const button = page.getByRole("button", { name: new RegExp(`^${name}`) });
       await expect(button).toBeVisible();

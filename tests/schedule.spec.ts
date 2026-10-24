@@ -119,7 +119,6 @@ test("reminders wait until completion, survive reload, and return to the untouch
   await page.clock.setFixedTime(before(181));
   await addScheduled(page);
   await page.goto("/#/still/focus");
-  await page.getByRole("button", { name: "Add timer", exact: true }).click();
   await page.getByRole("button", { name: "Start timer", exact: true }).click();
   await page.clock.setFixedTime(before(180));
   await page.evaluate(() => window.dispatchEvent(new Event("focus")));
@@ -140,7 +139,7 @@ test("reminders wait until completion, survive reload, and return to the untouch
     page.getByText("3-HOUR REMINDER", { exact: true }),
   ).toBeVisible();
   await expect(
-    page.getByRole("button", { name: "Add timer", exact: true }),
+    page.getByRole("button", { name: "Start timer", exact: true }),
   ).toHaveCount(0);
   await page.reload();
   await expect(

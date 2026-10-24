@@ -44,7 +44,6 @@ export function useCountdown({
 }): {
   timer: null | { durationSeconds: number; status: CountdownStatus };
   remainingSeconds: number;
-  open: (seconds: number) => void;
   start: (seconds: number) => void;
   pause: () => void;
   resume: () => void;
@@ -53,7 +52,6 @@ export function useCountdown({
     wasRunning: boolean;
   } | null;
   reset: () => void;
-  remove: () => void;
 } {
   const [stored, setStored] = useState<CountdownState | null>(readStoredTimer);
   const [now, setNow] = useState(Date.now);
@@ -121,15 +119,6 @@ export function useCountdown({
       : null;
   }, [ready, itemId, scope]);
 
-  const open = useCallback(
-    (seconds: number) => {
-      if (!ready || !itemId) return;
-      const at = Date.now();
-      commit(createCountdown(itemId, scope, seconds, false, at), at);
-    },
-    [ready, itemId, scope, commit],
-  );
-
   const start = useCallback(
     (seconds: number) => {
       if (!ready || !itemId) return;
@@ -181,10 +170,6 @@ export function useCountdown({
     );
   }, [matchingTimer, commit]);
 
-  const remove = useCallback(() => {
-    if (matchingTimer()) commit(null);
-  }, [matchingTimer, commit]);
-
   const visible =
     ready && itemId && stored?.itemId === itemId && stored.scope === scope
       ? stored
@@ -196,12 +181,10 @@ export function useCountdown({
     remainingSeconds: visible
       ? Math.ceil(remainingMilliseconds(visible, now) / 1000)
       : 0,
-    open,
     start,
     pause,
     resume,
     pauseForCompletion,
     reset,
-    remove,
   };
 }

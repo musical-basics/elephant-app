@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
-import { Pause, Play, RotateCcw, Timer, X } from "lucide-react";
+import { Pause, Play, RotateCcw, Timer } from "lucide-react";
 import {
   formatCountdown,
   inferDurationSeconds,
@@ -15,8 +15,7 @@ type Props = {
 };
 
 export default function FocusTimer({ title, countdown }: Props) {
-  const { timer, remainingSeconds, open, start, pause, resume, reset, remove } =
-    countdown;
+  const { timer, remainingSeconds, start, pause, resume, reset } = countdown;
   const suggested = inferDurationSeconds(title);
   const duration = timer?.durationSeconds ?? suggested ?? 300;
   const [minutes, setMinutes] = useState(String(Math.floor(duration / 60)));
@@ -54,22 +53,9 @@ export default function FocusTimer({ title, countdown }: Props) {
     start(total);
   }
 
-  if (!timer) {
-    return (
-      <div className="focus-timer-invite">
-        <button
-          type="button"
-          className="secondary-button"
-          onClick={() => open(suggested ?? 300)}
-        >
-          <Timer size={17} />
-          Add timer
-        </button>
-      </div>
-    );
-  }
-
-  const overtime = timer.status !== "ready" && remainingSeconds <= 0;
+  // Always offer the timer; nothing is saved until it starts.
+  const status = timer?.status ?? "ready";
+  const overtime = status !== "ready" && remainingSeconds <= 0;
   return (
     <section
       className={`focus-timer${overtime ? " timer-overtime" : ""}`}
@@ -79,17 +65,8 @@ export default function FocusTimer({ title, countdown }: Props) {
         <h2>
           <Timer size={17} /> Optional timer
         </h2>
-        <button
-          type="button"
-          className="icon-button"
-          aria-label="Remove timer"
-          title="Remove timer"
-          onClick={remove}
-        >
-          <X size={17} />
-        </button>
       </div>
-      {timer.status === "ready" ? (
+      {status === "ready" ? (
         <form className="timer-form" onSubmit={submit} noValidate>
           <div className="timer-duration-fields">
             <label>
@@ -147,7 +124,7 @@ export default function FocusTimer({ title, countdown }: Props) {
               {formatCountdown(remainingSeconds)}
             </span>
             <span className="timer-state">
-              {timer.status === "paused"
+              {status === "paused"
                 ? overtime
                   ? "Overtime · Paused"
                   : "Paused"
@@ -164,7 +141,7 @@ export default function FocusTimer({ title, countdown }: Props) {
             />
           </div>
           <div className="timer-controls">
-            {timer.status === "running" ? (
+            {status === "running" ? (
               <button
                 type="button"
                 className="primary-button"

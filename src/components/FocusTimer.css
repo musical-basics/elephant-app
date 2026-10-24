@@ -1,13 +1,3 @@
-.focus-timer-invite {
-  display: flex;
-  justify-content: center;
-  margin-bottom: 18px;
-}
-.focus-timer-invite .secondary-button {
-  min-height: 44px;
-  color: var(--muted);
-  font-size: 12px;
-}
 .focus-timer {
   max-width: 400px;
   margin: 0 auto 20px;
@@ -30,11 +20,6 @@
   font-size: 12px;
   font-weight: 500;
   color: var(--muted);
-}
-.timer-heading .icon-button {
-  min-width: 44px;
-  min-height: 44px;
-  margin-right: -8px;
 }
 .timer-duration-fields {
   display: grid;

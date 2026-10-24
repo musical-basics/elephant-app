@@ -1060,7 +1060,7 @@ export default function App({
 
               {screen === "focus" && (
                 <div
-                  className={`focus-page${!reminder && countdown.timer ? " timer-open" : ""}${!reminder && current?.item.isPlaceholder ? " has-placeholder" : ""}`}
+                  className={`focus-page${!reminder && current && !current.item.isPlaceholder ? " timer-open" : ""}${!reminder && current?.item.isPlaceholder ? " has-placeholder" : ""}`}
                 >
                   <div className="focus-top">
                     <button

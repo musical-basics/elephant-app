@@ -136,7 +136,6 @@ test("completion plays once after a timed task is confirmed, and stays quiet on 
   page,
 }) => {
   await page.goto("/#/still/focus");
-  await page.getByRole("button", { name: "Add timer", exact: true }).click();
   await page.getByRole("button", { name: "Start timer", exact: true }).click();
   await page.getByRole("button", { name: /Completed!/ }).click();
   await page.getByRole("button", { name: "Keep working", exact: true }).click();

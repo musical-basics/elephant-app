@@ -192,7 +192,6 @@ test("Take a bite, edit, and timed completion operate on the chosen project with
     .getByRole("button", { name: "Make it smaller", exact: true })
     .click();
   await task(page, "Scales");
-  await page.getByRole("button", { name: "Add timer", exact: true }).click();
   await page.getByRole("button", { name: "Start timer", exact: true }).click();
   await page.clock.setFixedTime(new Date(Date.parse(timestamp) + 65_000));
   await page.getByRole("button", { name: /Completed!/ }).click();
