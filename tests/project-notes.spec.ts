@@ -173,3 +173,36 @@ test("Do now shows completed items from the current project", async ({
     ),
   ).toBe(true);
 });
+
+test("project notes sit beside the steps on wide screens and above them when narrow", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto("/#/still/project/demo-dinner");
+  const notes = page.locator(".project-notes");
+  const steps = page.locator(".project-items");
+  await expect(notes).toBeVisible();
+  let notesBox = (await notes.boundingBox())!;
+  let stepsBox = (await steps.boundingBox())!;
+  expect(notesBox.x).toBeGreaterThan(stepsBox.x + stepsBox.width);
+  expect(notesBox.width).toBeGreaterThanOrEqual(280);
+  expect(notesBox.width).toBeLessThanOrEqual(360);
+  // The notes column starts level with the steps column.
+  expect(
+    Math.abs(
+      notesBox.y -
+        (await page.locator(".project-steps-column").boundingBox())!.y,
+    ),
+  ).toBeLessThan(2);
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= window.innerWidth,
+    ),
+  ).toBe(true);
+
+  await page.setViewportSize({ width: 1000, height: 900 });
+  notesBox = (await notes.boundingBox())!;
+  stepsBox = (await steps.boundingBox())!;
+  expect(notesBox.y + notesBox.height).toBeLessThan(stepsBox.y);
+  expect(Math.abs(notesBox.x - stepsBox.x)).toBeLessThan(2);
+});

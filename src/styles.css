@@ -1064,6 +1064,44 @@ button {
   min-height: 44px;
   flex-shrink: 0;
 }
+.project-detail-columns {
+  display: flex;
+  flex-direction: column;
+}
+.project-steps-column {
+  min-width: 0;
+}
+/* Narrow screens keep the notes above the steps. */
+.project-notes-column {
+  order: -1;
+  min-width: 0;
+}
+@media (min-width: 1101px) {
+  .project-detail-columns {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(280px, 360px);
+    gap: 28px;
+    align-items: start;
+  }
+  /* Notes stay in view beside a long list of steps. */
+  .project-notes-column {
+    order: 0;
+    position: sticky;
+    top: 24px;
+    max-height: calc(100dvh - 48px);
+    overflow-y: auto;
+  }
+  .project-notes-column .project-notes {
+    margin-bottom: 0;
+  }
+  .project-notes-column .project-notes textarea {
+    min-height: 260px;
+  }
+  .project-notes-column .project-notes-footer {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}
 .project-empty-note {
   line-height: 1.7;
   margin-bottom: 16px !important;

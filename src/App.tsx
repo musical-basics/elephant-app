@@ -1719,161 +1719,182 @@ export default function App({
                         </button>
                       )}
                     </div>
-                    <ProjectNotesForm
-                      key={`${project.id}:${project.notes ?? ""}`}
-                      project={project}
-                      inputId="projectNotes"
-                      onSave={(notes) =>
-                        mutate(
-                          (current) =>
-                            updateProject(current, project.id, { notes }),
-                          "Project notes saved.",
-                        )
-                      }
-                    />
-                    <ProjectFocus
-                      state={state}
-                      projectId={project.id}
-                      onChange={changeFocusMode}
-                    />
-                    <div className="section-heading">
-                      <h2>One step, then another.</h2>
-                      <span>
-                        {
-                          remainingProjectItems.filter(
-                            (item) => !item.isPlaceholder,
-                          ).length
-                        }{" "}
-                        remaining
-                      </span>
-                    </div>
-                    {remainingProjectItems.some(
-                      (item) => !item.isPlaceholder,
-                    ) ? (
-                      <p className="small muted reorder-help">
-                        Hold a handle to reorder. Select a step to add one after
-                        it.
-                      </p>
-                    ) : (
-                      <p className="small muted project-empty-note">
-                        {project.status === "completed"
-                          ? "This project is complete. Adding a step will reopen it."
-                          : "No unfinished steps. Add more whenever you’re ready, or mark this project complete."}
-                      </p>
-                    )}
-                    <div className="project-items">
-                      {remainingProjectItems.map((item, index, items) =>
-                        item.isPlaceholder ? (
-                          <div
-                            className="project-item project-placeholder"
-                            key={item.id}
-                            data-item-id={item.id}
-                          >
-                            <span className="placeholder-symbol">
-                              <Plus size={21} />
-                            </span>
-                            <button
-                              className="item-title"
-                              onClick={() => setModal({ kind: "rename", item })}
-                            >
-                              <strong>Blank placeholder</strong>
-                              <small>
-                                Add a task here, or mark this project complete.
-                              </small>
-                            </button>
-                            <button
-                              className="icon-button"
-                              aria-label="Edit placeholder"
-                              title="Edit placeholder"
-                              onClick={() => setModal({ kind: "rename", item })}
-                            >
-                              <Pencil size={18} />
-                            </button>
-                          </div>
+                    <div className="project-detail-columns">
+                      <div className="project-steps-column">
+                        <ProjectFocus
+                          state={state}
+                          projectId={project.id}
+                          onChange={changeFocusMode}
+                        />
+                        <div className="section-heading">
+                          <h2>One step, then another.</h2>
+                          <span>
+                            {
+                              remainingProjectItems.filter(
+                                (item) => !item.isPlaceholder,
+                              ).length
+                            }{" "}
+                            remaining
+                          </span>
+                        </div>
+                        {remainingProjectItems.some(
+                          (item) => !item.isPlaceholder,
+                        ) ? (
+                          <p className="small muted reorder-help">
+                            Hold a handle to reorder. Select a step to add one
+                            after it.
+                          </p>
                         ) : (
-                          <ProjectItem
-                            key={item.id}
-                            item={item}
-                            index={index}
-                            count={items.length}
-                            selected={selectedItem === item.id}
-                            onSelect={() =>
-                              setSelectedItem(
-                                selectedItem === item.id ? null : item.id,
-                              )
-                            }
-                            onRename={() => setModal({ kind: "rename", item })}
-                            onDelete={() => setModal({ kind: "delete", item })}
-                            onDuplicate={() => duplicate(item)}
-                            onReorder={(direction) =>
-                              mutate((s) => reorderItem(s, item.id, direction))
-                            }
-                            onMove={(target) =>
-                              mutate((s) => moveItem(s, item.id, target))
-                            }
-                          />
-                        ),
-                      )}
-                    </div>
-                    <button
-                      className="add-project-item"
-                      onClick={() =>
-                        setModal({
-                          kind: "item",
-                          projectId: project.id,
-                          afterId: selectedItem || undefined,
-                        })
-                      }
-                    >
-                      <Plus size={19} />
-                      {selectedItem
-                        ? "Add an item after selected step"
-                        : "Add a little step"}
-                    </button>
-                    {state.items.some(
-                      (i) => i.projectId === project.id && i.completedAt,
-                    ) && (
-                      <details className="finished-details">
-                        <summary>
-                          {
-                            state.items.filter(
-                              (i) =>
-                                i.projectId === project.id && i.completedAt,
-                            ).length
-                          }{" "}
-                          completed steps
-                          <ChevronDown size={16} />
-                        </summary>
-                        {state.items
-                          .filter(
-                            (i) => i.projectId === project.id && i.completedAt,
-                          )
-                          .map((item) => (
-                            <div className="finished-step" key={item.id}>
-                              <CircleCheck size={17} />
-                              <span>{item.title}</span>
-                              <small>
-                                {formatDate(item.completedAt!)}
-                                {item.timeSpentSeconds !== undefined && (
-                                  <span className="finished-task-time">
-                                    {formatElapsedTime(item.timeSpentSeconds)}{" "}
-                                    spent
-                                  </span>
-                                )}
-                              </small>
-                              <DuplicateButton
+                          <p className="small muted project-empty-note">
+                            {project.status === "completed"
+                              ? "This project is complete. Adding a step will reopen it."
+                              : "No unfinished steps. Add more whenever you’re ready, or mark this project complete."}
+                          </p>
+                        )}
+                        <div className="project-items">
+                          {remainingProjectItems.map((item, index, items) =>
+                            item.isPlaceholder ? (
+                              <div
+                                className="project-item project-placeholder"
+                                key={item.id}
+                                data-item-id={item.id}
+                              >
+                                <span className="placeholder-symbol">
+                                  <Plus size={21} />
+                                </span>
+                                <button
+                                  className="item-title"
+                                  onClick={() =>
+                                    setModal({ kind: "rename", item })
+                                  }
+                                >
+                                  <strong>Blank placeholder</strong>
+                                  <small>
+                                    Add a task here, or mark this project
+                                    complete.
+                                  </small>
+                                </button>
+                                <button
+                                  className="icon-button"
+                                  aria-label="Edit placeholder"
+                                  title="Edit placeholder"
+                                  onClick={() =>
+                                    setModal({ kind: "rename", item })
+                                  }
+                                >
+                                  <Pencil size={18} />
+                                </button>
+                              </div>
+                            ) : (
+                              <ProjectItem
+                                key={item.id}
                                 item={item}
+                                index={index}
+                                count={items.length}
+                                selected={selectedItem === item.id}
+                                onSelect={() =>
+                                  setSelectedItem(
+                                    selectedItem === item.id ? null : item.id,
+                                  )
+                                }
+                                onRename={() =>
+                                  setModal({ kind: "rename", item })
+                                }
+                                onDelete={() =>
+                                  setModal({ kind: "delete", item })
+                                }
                                 onDuplicate={() => duplicate(item)}
+                                onReorder={(direction) =>
+                                  mutate((s) =>
+                                    reorderItem(s, item.id, direction),
+                                  )
+                                }
+                                onMove={(target) =>
+                                  mutate((s) => moveItem(s, item.id, target))
+                                }
                               />
-                            </div>
-                          ))}
-                      </details>
-                    )}
-                    {formError && (
-                      <p className="form-error" role="alert">
-                        {formError}
-                      </p>
-                    )}
+                            ),
+                          )}
+                        </div>
+                        <button
+                          className="add-project-item"
+                          onClick={() =>
+                            setModal({
+                              kind: "item",
+                              projectId: project.id,
+                              afterId: selectedItem || undefined,
+                            })
+                          }
+                        >
+                          <Plus size={19} />
+                          {selectedItem
+                            ? "Add an item after selected step"
+                            : "Add a little step"}
+                        </button>
+                        {state.items.some(
+                          (i) => i.projectId === project.id && i.completedAt,
+                        ) && (
+                          <details className="finished-details">
+                            <summary>
+                              {
+                                state.items.filter(
+                                  (i) =>
+                                    i.projectId === project.id && i.completedAt,
+                                ).length
+                              }{" "}
+                              completed steps
+                              <ChevronDown size={16} />
+                            </summary>
+                            {state.items
+                              .filter(
+                                (i) =>
+                                  i.projectId === project.id && i.completedAt,
+                              )
+                              .map((item) => (
+                                <div className="finished-step" key={item.id}>
+                                  <CircleCheck size={17} />
+                                  <span>{item.title}</span>
+                                  <small>
+                                    {formatDate(item.completedAt!)}
+                                    {item.timeSpentSeconds !== undefined && (
+                                      <span className="finished-task-time">
+                                        {formatElapsedTime(
+                                          item.timeSpentSeconds,
+                                        )}{" "}
+                                        spent
+                                      </span>
+                                    )}
+                                  </small>
+                                  <DuplicateButton
+                                    item={item}
+                                    onDuplicate={() => duplicate(item)}
+                                  />
+                                </div>
+                              ))}
+                          </details>
+                        )}
+                        {formError && (
+                          <p className="form-error" role="alert">
+                            {formError}
+                          </p>
+                        )}
+                      </div>
+                      {/* Beside the steps on wide screens; above them when narrow. */}
+                      <div className="project-notes-column">
+                        <ProjectNotesForm
+                          key={`${project.id}:${project.notes ?? ""}`}
+                          project={project}
+                          inputId="projectNotes"
+                          onSave={(notes) =>
+                            mutate(
+                              (current) =>
+                                updateProject(current, project.id, { notes }),
+                              "Project notes saved.",
+                            )
+                          }
+                        />
+                      </div>
+                    </div>
                   </>
                 ) : (
                   <EmptyState
