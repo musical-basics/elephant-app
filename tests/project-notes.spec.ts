@@ -52,7 +52,7 @@ test("Do now toggles editable project notes beside the current item", async ({
   await page.setViewportSize({ width: 1200, height: 900 });
   await page.goto("/#/still/focus");
 
-  const toggle = page.getByRole("button", { name: "Show notes", exact: true });
+  const toggle = page.getByRole("button", { name: "Notes", exact: true });
   const panel = page.getByRole("complementary", {
     name: "Notes for Plan a Sunday dinner",
   });
@@ -60,9 +60,7 @@ test("Do now toggles editable project notes beside the current item", async ({
   await expect(panel).toBeHidden();
 
   await toggle.click();
-  await expect(
-    page.getByRole("button", { name: "Hide notes", exact: true }),
-  ).toHaveAttribute("aria-expanded", "true");
+  await expect(toggle).toHaveAttribute("aria-expanded", "true");
   await expect(panel).toBeVisible();
   const itemBounds = await page.locator(".focus-center").boundingBox();
   const notesBounds = await panel.boundingBox();
@@ -76,12 +74,10 @@ test("Do now toggles editable project notes beside the current item", async ({
     .getByRole("button", { name: "Hide project notes", exact: true })
     .click();
   await expect(panel).toBeHidden();
-  await expect(
-    page.getByRole("button", { name: "Show notes", exact: true }),
-  ).toHaveAttribute("aria-expanded", "false");
+  await expect(toggle).toHaveAttribute("aria-expanded", "false");
 
   await page.setViewportSize({ width: 320, height: 844 });
-  await page.getByRole("button", { name: "Show notes", exact: true }).click();
+  await page.getByRole("button", { name: "Notes", exact: true }).click();
   await expect(panel).toBeVisible();
   await expect(notes).toHaveValue("Menu chosen. Next: confirm who is coming.");
   expect(
@@ -123,7 +119,7 @@ test("Do now shows completed items from the current project", async ({
   await page.reload();
 
   const toggle = page.getByRole("button", {
-    name: /See project completed items/,
+    name: /^Completed items/,
   });
   const panel = page.getByRole("complementary", {
     name: "Completed items for Plan a Sunday dinner",
@@ -133,9 +129,7 @@ test("Do now shows completed items from the current project", async ({
   await expect(panel).toBeHidden();
 
   await toggle.click();
-  await expect(
-    page.getByRole("button", { name: /Hide completed items/ }),
-  ).toHaveAttribute("aria-expanded", "true");
+  await expect(toggle).toHaveAttribute("aria-expanded", "true");
   await expect(panel).toBeVisible();
   await expect(panel.getByRole("heading")).toHaveText(
     "Completed in this project",
@@ -154,7 +148,7 @@ test("Do now shows completed items from the current project", async ({
   const panelBounds = await panel.boundingBox();
   expect(panelBounds!.x).toBeGreaterThan(itemBounds!.x + itemBounds!.width / 2);
 
-  await page.getByRole("button", { name: "Show notes", exact: true }).click();
+  await page.getByRole("button", { name: "Notes", exact: true }).click();
   await expect(panel).toBeHidden();
   await expect(
     page.getByRole("complementary", {
@@ -163,9 +157,7 @@ test("Do now shows completed items from the current project", async ({
   ).toBeVisible();
 
   await page.setViewportSize({ width: 320, height: 844 });
-  await page
-    .getByRole("button", { name: /See project completed items/ })
-    .click();
+  await page.getByRole("button", { name: /^Completed items/ }).click();
   await expect(panel).toBeVisible();
   expect(
     await page.evaluate(
@@ -206,4 +198,28 @@ test("project notes sit beside the steps on wide screens and above them when nar
   ({ notes, steps } = await layout());
   expect(notes.y + notes.height).toBeLessThan(steps.y);
   expect(Math.abs(notes.x - steps.x)).toBeLessThan(2);
+});
+
+test("Do now gives View project its own large button, apart from the panel toggles", async ({
+  page,
+}) => {
+  for (const [width, height] of [
+    [1200, 900],
+    [320, 844],
+  ]) {
+    await page.setViewportSize({ width, height });
+    await page.goto("/#/still/focus");
+    const view = page.getByRole("button", { name: /View project/ });
+    await expect(view).toContainText("Plan a Sunday dinner");
+    const viewBox = (await view.boundingBox())!;
+    const notesBox = (await page
+      .getByRole("button", { name: "Notes", exact: true })
+      .boundingBox())!;
+    expect(viewBox.height).toBeGreaterThanOrEqual(48);
+    // The toggles sit on their own row below the project button.
+    expect(notesBox.y).toBeGreaterThanOrEqual(viewBox.y + viewBox.height);
+    expect(viewBox.x + viewBox.width).toBeLessThanOrEqual(width);
+    await view.click();
+    await expect(page).toHaveURL(/#\/still\/project\/demo-dinner$/);
+  }
 });

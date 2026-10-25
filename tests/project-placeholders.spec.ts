@@ -151,9 +151,7 @@ for (const design of ["still", "ember", "orbit", "tide", "pop"]) {
     expect(
       (await readState(page)).items.filter((item) => item.isPlaceholder),
     ).toHaveLength(1);
-    await page
-      .getByRole("button", { name: "View project", exact: true })
-      .click();
+    await page.getByRole("button", { name: /View project/ }).click();
     await expect(
       page.getByRole("button", { name: "Edit placeholder", exact: true }),
     ).toBeVisible();

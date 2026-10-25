@@ -1459,37 +1459,74 @@ button {
 }
 .focus-project {
   display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
+  flex-direction: column;
   align-items: center;
-  gap: 0 16px;
-  font-size: 12px;
+  gap: 12px;
+  color: var(--muted);
+}
+/* One large target that also says which project it opens. */
+.focus-project-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  max-width: 100%;
+  min-height: 52px;
+  padding: 8px 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--ink);
+  font-size: 14px;
+  text-align: left;
+}
+.focus-project-link:hover {
+  border-color: var(--accent);
+}
+.focus-project-link > svg {
+  flex-shrink: 0;
   color: var(--muted);
 }
 .focus-project-name {
-  display: flex;
-  align-items: center;
   min-width: 0;
-  gap: 8px;
-}
-.focus-project-name span {
+  font-weight: 500;
   overflow-wrap: anywhere;
 }
-.focus-project-name svg,
-.focus-project-link {
-  flex-shrink: 0;
-}
-.focus-project-link {
-  min-height: 44px;
-  color: var(--accent);
-}
-.focus-notes-toggle,
-.focus-completed-toggle {
+.focus-project-view {
   display: inline-flex;
   align-items: center;
   gap: 6px;
+  flex-shrink: 0;
+  margin-left: 4px;
+  padding-left: 14px;
+  border-left: 1px solid var(--line);
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.focus-project-tools {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+}
+.focus-project-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
   min-height: 44px;
-  color: var(--accent);
+  padding: 0 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  color: var(--muted);
+  font-size: 12px;
+}
+.focus-project-toggle:hover {
+  color: var(--ink);
+}
+.focus-project-toggle[aria-expanded="true"] {
+  border-color: var(--accent);
+  background: var(--soft);
+  color: var(--ink);
 }
 .focus-project-count {
   display: inline-flex;
@@ -3225,11 +3262,10 @@ button {
     width: 25px;
   }
   .focus-project {
-    font-size: 10px;
-    gap: 0 12px;
+    gap: 10px;
   }
-  .focus-project svg {
-    width: 13px;
+  .focus-project-link {
+    min-height: 48px;
   }
   .project-focus-back {
     flex-basis: 100%;
@@ -3881,8 +3917,11 @@ button {
   .focus-center .eyebrow {
     font-size: 9px;
   }
-  .focus-project {
-    font-size: 13px;
+  .focus-project-link {
+    font-size: 14px;
+  }
+  .focus-project-toggle {
+    font-size: 12px;
   }
   .focus-reassurance {
     font-size: 11px;

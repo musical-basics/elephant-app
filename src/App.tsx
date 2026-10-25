@@ -1180,60 +1180,59 @@ export default function App({
                           </div>
                           {current.project && (
                             <div className="focus-project">
-                              <p className="focus-project-name">
-                                <Folder size={15} />
-                                <span>{current.project.name}</span>
-                              </p>
                               <button
                                 type="button"
-                                className="text-button focus-project-link"
+                                className="focus-project-link"
                                 onClick={() =>
                                   navigate("project", current.project!.id)
                                 }
                               >
-                                View project
-                                <ArrowRight size={15} />
-                              </button>
-                              <button
-                                type="button"
-                                className="text-button focus-notes-toggle"
-                                aria-expanded={focusProjectPanel === "notes"}
-                                aria-controls="focus-project-notes"
-                                onClick={() =>
-                                  setFocusProjectPanel((panel) =>
-                                    panel === "notes" ? null : "notes",
-                                  )
-                                }
-                              >
-                                <NotebookPen size={15} />
-                                {focusProjectPanel === "notes"
-                                  ? "Hide notes"
-                                  : "Show notes"}
-                              </button>
-                              <button
-                                type="button"
-                                className="text-button focus-completed-toggle"
-                                aria-expanded={
-                                  focusProjectPanel === "completed"
-                                }
-                                aria-controls="focus-project-completed"
-                                onClick={() =>
-                                  setFocusProjectPanel((panel) =>
-                                    panel === "completed" ? null : "completed",
-                                  )
-                                }
-                              >
-                                <CheckCheck size={15} />
-                                {focusProjectPanel === "completed"
-                                  ? "Hide completed items"
-                                  : "See project completed items"}
-                                <span
-                                  className="focus-project-count"
-                                  aria-label={`${currentProjectCompletedItems.length} completed`}
-                                >
-                                  {currentProjectCompletedItems.length}
+                                <Folder size={17} />
+                                <span className="focus-project-name">
+                                  {current.project.name}
+                                </span>
+                                <span className="focus-project-view">
+                                  View project
+                                  <ArrowRight size={15} />
                                 </span>
                               </button>
+                              <div className="focus-project-tools">
+                                <button
+                                  type="button"
+                                  className="focus-project-toggle"
+                                  aria-expanded={focusProjectPanel === "notes"}
+                                  aria-controls="focus-project-notes"
+                                  onClick={() =>
+                                    setFocusProjectPanel((panel) =>
+                                      panel === "notes" ? null : "notes",
+                                    )
+                                  }
+                                >
+                                  <NotebookPen size={15} />
+                                  Notes
+                                </button>
+                                <button
+                                  type="button"
+                                  className="focus-project-toggle"
+                                  aria-expanded={
+                                    focusProjectPanel === "completed"
+                                  }
+                                  aria-controls="focus-project-completed"
+                                  onClick={() =>
+                                    setFocusProjectPanel((panel) =>
+                                      panel === "completed"
+                                        ? null
+                                        : "completed",
+                                    )
+                                  }
+                                >
+                                  <CheckCheck size={15} />
+                                  Completed items
+                                  <span className="focus-project-count">
+                                    {currentProjectCompletedItems.length}
+                                  </span>
+                                </button>
+                              </div>
                             </div>
                           )}
                           <p className="focus-reassurance">
