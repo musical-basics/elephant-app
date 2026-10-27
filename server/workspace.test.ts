@@ -82,12 +82,17 @@ it("passes an explicit expected revision and ignores client-supplied workspace I
         p_workspace_id: "desktop",
         p_data: {
           ...createEmptyState(),
-          settings: { showMasterList: false, diarySort: "newest" },
+          settings: {
+            showMasterList: false,
+            diarySort: "newest",
+            weekStartsOn: 1,
+          },
           activityLog: [],
           focusMode: null,
           diary: [],
           routines: [],
           weeklyItems: [],
+          pointsGoal: null,
         },
         p_expected_revision: 4,
       });
@@ -98,12 +103,17 @@ it("passes an explicit expected revision and ignores client-supplied workspace I
     request({
       data: {
         ...createEmptyState(),
-        settings: { showMasterList: false, diarySort: "newest" },
+        settings: {
+          showMasterList: false,
+          diarySort: "newest",
+          weekStartsOn: 1,
+        },
         activityLog: [],
         focusMode: null,
         diary: [],
         routines: [],
         weeklyItems: [],
+        pointsGoal: null,
       },
       expectedRevision: 4,
       workspaceId: "someone-else",
@@ -237,12 +247,17 @@ it("preserves focus mode omitted by an older tab, and accepts an explicit stop",
         request({
           data: {
             ...state,
-            settings: { ...state.settings, diarySort: "newest" },
+            settings: {
+              ...state.settings,
+              diarySort: "newest",
+              weekStartsOn: 1,
+            },
             focusMode: null,
             activityLog: [],
             diary: [],
             routines: [],
             weeklyItems: [],
+            pointsGoal: null,
           },
           expectedRevision: 5,
         }),
@@ -262,12 +277,17 @@ it("preserves diary entries omitted by an older tab, and accepts an explicit emp
   ];
   const current = {
     ...createEmptyState(),
-    settings: { showMasterList: false, diarySort: "newest" as const },
+    settings: {
+      showMasterList: false,
+      diarySort: "newest" as const,
+      weekStartsOn: 1,
+    },
     activityLog: [],
     focusMode: null,
     diary,
     routines: [],
     weeklyItems: [],
+    pointsGoal: null,
   };
   const fetchMock = vi.fn(async (input, init) => {
     if (String(input).endsWith("/elephant_read_desktop"))
@@ -325,6 +345,53 @@ it("preserves a diary sort preference omitted by an older tab", async () => {
             activityLog: [],
             focusMode: null,
             diary: [],
+          },
+          expectedRevision: 4,
+        }),
+      )
+    ).status,
+  ).toBe(200);
+  expect(fetchMock).toHaveBeenCalledTimes(2);
+});
+
+it("preserves a points goal and week start omitted by an older tab", async () => {
+  const pointsGoal = {
+    weeklyTarget: 750,
+    weekOf: "2026-10-26",
+    history: [{ weekOf: "2026-10-19", target: 700, earned: 800 }],
+  };
+  const fetchMock = vi.fn(async (input, init) => {
+    if (String(input).endsWith("/elephant_read_desktop"))
+      return Response.json({
+        data: {
+          ...createEmptyState(),
+          settings: { showMasterList: false, weekStartsOn: 0 },
+          pointsGoal,
+        },
+        revision: 4,
+      });
+    expect(JSON.parse(init.body)).toMatchObject({
+      p_data: {
+        settings: { showMasterList: true, weekStartsOn: 0 },
+        pointsGoal,
+      },
+      p_expected_revision: 4,
+    });
+    return Response.json({ revision: 5 });
+  });
+  vi.stubGlobal("fetch", fetchMock);
+  expect(
+    (
+      await PUT(
+        request({
+          data: {
+            ...createEmptyState(),
+            settings: { showMasterList: true, diarySort: "newest" },
+            activityLog: [],
+            focusMode: null,
+            diary: [],
+            routines: [],
+            weeklyItems: [],
           },
           expectedRevision: 4,
         }),

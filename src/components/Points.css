@@ -1,0 +1,291 @@
+.points-fields {
+  border: 0;
+  padding: 0;
+  margin: 0 0 22px;
+  min-width: 0;
+}
+.sheet-form .small + .points-fields {
+  margin-top: 22px;
+}
+.points-fields legend {
+  font-size: 11px;
+  font-weight: 500;
+  margin-bottom: 10px;
+}
+.points-kinds {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+.sheet-form .points-kinds label {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  gap: 4px;
+  min-height: 56px;
+  margin: 0;
+  padding: 10px 4px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  cursor: pointer;
+  background: var(--surface);
+}
+.points-kinds label.is-selected {
+  border-color: var(--accent);
+  background: var(--soft);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+.points-kinds label:focus-within {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+.sheet-form .points-kinds input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+.points-kinds strong {
+  font-size: 12px;
+  font-weight: 500;
+}
+.points-kinds span {
+  font-size: 9px;
+  color: var(--muted);
+}
+.sheet-form .points-value {
+  margin: 14px 0 0;
+}
+.points-value small,
+.points-amount small {
+  display: block;
+  margin-top: 8px;
+  font-size: 10px;
+  font-weight: 400;
+  color: var(--muted);
+  line-height: 1.6;
+}
+
+.points-board {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 16px 14px;
+  margin-top: 24px;
+  padding: 22px 24px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+.points-board-heading {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+.points-board-heading .eyebrow {
+  margin: 0;
+}
+.points-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: var(--soft);
+  color: var(--accent);
+}
+.points-status {
+  justify-self: end;
+  padding: 6px 11px;
+  border-radius: 999px;
+  background: var(--soft);
+  font-size: 11px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+.points-status[data-pace="ahead"] {
+  color: var(--green);
+  background: color-mix(in srgb, var(--green) 12%, var(--surface));
+}
+.points-status[data-pace="behind"] {
+  color: var(--bite);
+  background: color-mix(in srgb, var(--bite) 10%, var(--surface));
+}
+.points-meters {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 22px;
+}
+.points-meter {
+  min-width: 0;
+}
+.points-meter-label {
+  display: block;
+  font-size: 10px;
+  color: var(--muted);
+}
+.points-meter strong {
+  display: block;
+  margin-top: 4px;
+  font-family: var(--heading);
+  font-size: 26px;
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+.points-meter strong small {
+  font-family: inherit;
+  font-size: 14px;
+  color: var(--muted);
+}
+.points-track {
+  position: relative;
+  display: block;
+  height: 6px;
+  margin-top: 10px;
+  border-radius: 3px;
+  background: var(--soft);
+}
+.points-track span {
+  display: block;
+  height: 100%;
+  max-width: 100%;
+  border-radius: inherit;
+  background: var(--accent);
+}
+.theme-pop .points-track span {
+  background: var(--ink);
+}
+/* Where the week should be by the start of today. */
+.points-track i {
+  position: absolute;
+  top: -3px;
+  width: 2px;
+  height: 12px;
+  margin-left: -1px;
+  border-radius: 1px;
+  background: var(--ink);
+  opacity: 0.45;
+}
+.points-note {
+  grid-column: 1 / -1;
+  font-size: 11px;
+  color: var(--muted);
+  line-height: 1.6;
+}
+.points-note .text-button {
+  display: inline;
+  font-size: inherit;
+}
+
+.points-board.is-compact {
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 10px 18px;
+  margin-top: 16px;
+  padding: 12px 18px;
+}
+.points-board.is-compact .points-icon {
+  width: 28px;
+  height: 28px;
+}
+.points-board.is-compact .points-meters {
+  grid-column: 2;
+  grid-row: 1;
+  gap: 18px;
+}
+.points-board.is-compact .points-meter {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: baseline;
+  column-gap: 8px;
+}
+.points-board.is-compact .points-meter strong {
+  margin: 0;
+  font-size: 17px;
+}
+.points-board.is-compact .points-meter strong small {
+  font-size: 11px;
+}
+.points-board.is-compact .points-track {
+  grid-column: 1 / -1;
+  height: 4px;
+  margin-top: 6px;
+}
+.points-board.is-compact .points-status {
+  grid-column: 3;
+  grid-row: 1;
+}
+
+.points-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 auto 18px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: var(--soft);
+  color: var(--accent);
+  font-size: 11px;
+  font-weight: 500;
+}
+.theme-pop .points-chip {
+  color: var(--ink);
+}
+.points-amount input {
+  font-variant-numeric: tabular-nums;
+}
+.points-amount-preview {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--accent);
+}
+.theme-pop .points-amount-preview {
+  color: var(--green);
+}
+
+@media (max-width: 600px) {
+  .points-kinds {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .points-board {
+    padding: 18px;
+  }
+  .points-board.is-compact {
+    grid-template-columns: minmax(0, 1fr) auto;
+    padding: 12px 14px;
+  }
+  .points-board.is-compact .points-meters {
+    grid-column: 1 / -1;
+    grid-row: 2;
+  }
+  .points-board.is-compact .points-status {
+    grid-column: 2;
+  }
+}
+
+.points-goal-form {
+  display: flex;
+  align-items: flex-end;
+  gap: 12px;
+}
+.points-goal-form label {
+  flex: 1;
+}
+.theme .points-settings-note {
+  margin: 12px 0 20px;
+  line-height: 1.7;
+}
+.points-week-start {
+  max-width: 260px;
+}

@@ -6,6 +6,8 @@ import { DIARY_SORTS, MAX_DIARY_LENGTH } from './diary.js';
 import type { DiaryEntry, DiarySort } from './diary';
 import { checkRoutine, checkWeeklyItem } from './routine.js';
 import type { RoutineDraft, RoutineItem, WeeklyItem } from './routine';
+import { checkItemPoints, checkPointsGoal, earnedPoints, MAX_POINTS_QUANTITY, MAX_POINTS_VALUE, roundPoints } from './points.js';
+import type { ItemPoints, PointsGoal } from './points';
 
 export type ProjectStatus = 'active' | 'inactive' | 'completed';
 
@@ -27,6 +29,11 @@ export interface Item {
   completedAt: string | null;
   deletedProjectName?: string;
   timeSpentSeconds?: number;
+  points?: ItemPoints;
+  /** Recorded at completion, so later edits to the rate don't rewrite history. */
+  pointsEarned?: number;
+  /** The minutes or units entered for a rate-based item. */
+  pointsQuantity?: number;
   /** An empty project's reminder to add its next step or close the project. */
   isPlaceholder?: true;
 }
@@ -44,7 +51,8 @@ export interface FocusModeState {
 export interface AppState {
   version: 1;
   profile: { name: string; avatarUrl?: string };
-  settings: { showMasterList: boolean; diarySort?: DiarySort };
+  /** weekStartsOn: 0 = Sunday … 6 = Saturday; Monday when unset. */
+  settings: { showMasterList: boolean; diarySort?: DiarySort; weekStartsOn?: number };
   projects: Project[];
   items: Item[];
   queue: QueueSlot[];
@@ -55,6 +63,7 @@ export interface AppState {
   diary?: DiaryEntry[];
   routines?: RoutineItem[];
   weeklyItems?: WeeklyItem[];
+  pointsGoal?: PointsGoal | null;
 }
 
 export interface ResolvedQueueEntry {
@@ -216,11 +225,11 @@ export function addProject(state: AppState, name: string): AppState {
   return ensureProjectPlaceholders({ ...state, projects: [...state.projects, project] });
 }
 
-export function addItem(state: AppState, value: string, projectId?: string | null, afterItemId?: string): AppState {
+export function addItem(state: AppState, value: string, projectId?: string | null, afterItemId?: string, points?: ItemPoints | null): AppState {
   const text = title(value);
   const project = projectId ? state.projects.find((entry) => entry.id === projectId) : undefined;
   if (projectId && !project) return state;
-  const item: Item = { id: id(), projectId: project?.id ?? null, title: text, createdAt: now(), completedAt: null };
+  const item: Item = { id: id(), projectId: project?.id ?? null, title: text, createdAt: now(), completedAt: null, ...(points ? { points: checkItemPoints(points) } : {}) };
   const items = state.items.filter((entry) => !project || entry.projectId !== project.id || !entry.isPlaceholder);
   const after = afterItemId ? items.findIndex((entry) => entry.id === afterItemId && entry.projectId === item.projectId) : -1;
   items.splice(after === -1 ? items.length : after + 1, 0, item);
@@ -247,10 +256,10 @@ export function duplicateItem(state: AppState, itemId: string): AppState {
   const source = state.items.find((item) => item.id === itemId);
   if (!source || source.isPlaceholder) return state;
   if (!source.completedAt) {
-    return addItem(state, source.title, source.projectId, source.projectId ? source.id : undefined);
+    return addItem(state, source.title, source.projectId, source.projectId ? source.id : undefined, source.points);
   }
   const project = source.projectId ? state.projects.find((entry) => entry.id === source.projectId) : undefined;
-  const next = addItem(state, source.title, project?.id);
+  const next = addItem(state, source.title, project?.id, undefined, source.points);
   if (project) return next;
 
   // Adding an errand can also append project placeholders. Keep this completed
@@ -303,13 +312,17 @@ export function deleteProject(state: AppState, projectId: string): AppState {
   });
 }
 
-export function renameItem(state: AppState, itemId: string, value: string): AppState {
+/** `points` of null clears the item's points; undefined leaves them as they are. */
+export function renameItem(state: AppState, itemId: string, value: string, points?: ItemPoints | null): AppState {
   const text = title(value);
+  const checkedPoints = points ? checkItemPoints(points) : points;
   if (!state.items.some((item) => item.id === itemId)) return state;
   return { ...state, items: state.items.map((item) => {
     if (item.id !== itemId) return item;
     const renamed = { ...item, title: text, ...(item.isPlaceholder ? { createdAt: now() } : {}) };
     delete renamed.isPlaceholder;
+    if (checkedPoints) renamed.points = checkedPoints;
+    else if (checkedPoints === null) delete renamed.points;
     return renamed;
   }) };
 }
@@ -355,19 +368,28 @@ export function deleteItem(state: AppState, itemId: string): AppState {
   return ensureProjectPlaceholders({ ...next, queue: resolveQueue(next).map(({ slot }) => slot) });
 }
 
-export function completeCurrent(state: AppState, timeSpentSeconds?: number): AppState {
+/** Rate-based points use `pointsQuantity` (minutes or units); per-minute items fall back to the saved time. */
+export function completeCurrent(state: AppState, timeSpentSeconds?: number, pointsQuantity?: number): AppState {
   if (getActiveReminder(state)) return acknowledgeReminder(state);
   if (timeSpentSeconds !== undefined && (!Number.isSafeInteger(timeSpentSeconds) || timeSpentSeconds < 0)) {
     throw new Error('Time spent must be a nonnegative whole number of seconds.');
   }
   const current = currentQueueEntry(state);
   if (!current || current.item.isPlaceholder) return state;
+  const points = current.item.points;
+  const quantity = points?.kind === 'fixed' ? undefined
+    : pointsQuantity ?? (points?.kind === 'perMinute' && timeSpentSeconds !== undefined ? roundPoints(timeSpentSeconds / 60) : undefined);
+  const pointsEarned = points ? earnedPoints(points, quantity) : undefined;
   const timestamp = now();
   const items = state.items.map((item) => {
     if (item.id !== current.item.id) return item;
     const completed = { ...item, completedAt: timestamp };
     delete completed.timeSpentSeconds;
+    delete completed.pointsEarned;
+    delete completed.pointsQuantity;
     if (timeSpentSeconds !== undefined) completed.timeSpentSeconds = timeSpentSeconds;
+    if (pointsEarned !== undefined) completed.pointsEarned = pointsEarned;
+    if (quantity !== undefined) completed.pointsQuantity = quantity;
     return completed;
   });
   // A project stays open until the user explicitly marks the project complete.
@@ -387,6 +409,8 @@ export function putBackItem(state: AppState, itemId: string): AppState {
 
   const restored = { ...source, completedAt: null };
   delete restored.timeSpentSeconds;
+  delete restored.pointsEarned;
+  delete restored.pointsQuantity;
   const hadPlaceholder = parent && state.items.some((item) => item.projectId === parent.id && item.isPlaceholder);
   const items = state.items.filter((item) => !parent || item.projectId !== parent.id || !item.isPlaceholder);
   const restoredIndex = items.findIndex((item) => item.id === source.id);
@@ -416,7 +440,10 @@ export function takeBite(state: AppState, firstTitle: string, remainderTitle: st
   const index = state.items.findIndex((item) => item.id === current.item.id);
   const items = [...state.items];
   items[index] = { ...current.item, title: first };
-  const next: Item = { id: id(), projectId: current.item.projectId, title: remainder, createdAt: now(), completedAt: null };
+  // Rates apply to whatever work remains; a fixed award stays with the original
+  // item so splitting it can't double its points.
+  const points = current.item.points?.kind === 'fixed' ? undefined : current.item.points;
+  const next: Item = { id: id(), projectId: current.item.projectId, title: remainder, createdAt: now(), completedAt: null, ...(points ? { points } : {}) };
   items.splice(index + 1, 0, next);
   if (current.project) return { ...state, items };
   // A one-off task has no project placeholders. Its remainder appends to the
@@ -510,10 +537,15 @@ function inlineAvatar(value: unknown): string {
 export function validateImport(input: unknown): AppState {
   const data = record(input, 'data');
   if (data.version !== 1) throw new Error('Invalid backup: unsupported version.');
+  // Some fields share their editors' rules; report those as backup errors.
+  const checked = <T>(check: () => T): T => {
+    try { return check(); } catch (error) { throw new Error(`Invalid backup: ${(error as Error).message}`); }
+  };
   const profile = record(data.profile, 'profile');
   const settings = record(data.settings, 'settings');
   if (typeof settings.showMasterList !== 'boolean') throw new Error('Invalid backup: showMasterList must be true or false.');
   if (settings.diarySort !== undefined && !DIARY_SORTS.includes(settings.diarySort as DiarySort)) throw new Error('Invalid backup: diary sort must be newest or oldest.');
+  if (settings.weekStartsOn !== undefined && (!Number.isInteger(settings.weekStartsOn) || Number(settings.weekStartsOn) < 0 || Number(settings.weekStartsOn) > 6)) throw new Error('Invalid backup: the week must start on a day from Sunday to Saturday.');
   const projects = array(data.projects, 'projects').map((value): Project => {
     const project = record(value, 'project');
     if (typeof project.status !== 'string' || !['active', 'inactive', 'completed'].includes(project.status)) throw new Error('Invalid backup: unknown project status.');
@@ -529,9 +561,18 @@ export function validateImport(input: unknown): AppState {
     const isPlaceholder = item.isPlaceholder === true;
     const deletedProjectName = item.deletedProjectName === undefined ? undefined : string(item.deletedProjectName, 'deleted project name');
     const completedAt = nullableTimestamp(item.completedAt, 'item completedAt');
-    if (isPlaceholder && (item.title !== '' || completedAt || !item.projectId || deletedProjectName !== undefined || item.timeSpentSeconds !== undefined)) {
+    if (isPlaceholder && (item.title !== '' || completedAt || !item.projectId || deletedProjectName !== undefined || item.timeSpentSeconds !== undefined || item.points !== undefined || item.pointsEarned !== undefined || item.pointsQuantity !== undefined)) {
       throw new Error('Invalid backup: a placeholder must be an unfinished blank project item.');
     }
+    const points = item.points === undefined ? undefined : checked(() => checkItemPoints(item.points as ItemPoints));
+    const pointsNumber = (value: unknown, max: number, label: string): number | undefined => {
+      if (value !== undefined && (typeof value !== 'number' || !Number.isFinite(value) || value < 0 || value > max)) throw new Error(`Invalid backup: ${label} is out of range.`);
+      return value as number | undefined;
+    };
+    const pointsEarned = pointsNumber(item.pointsEarned, MAX_POINTS_VALUE * MAX_POINTS_QUANTITY, 'item points earned');
+    const pointsQuantity = pointsNumber(item.pointsQuantity, MAX_POINTS_QUANTITY, 'item points quantity');
+    if ((pointsEarned !== undefined || pointsQuantity !== undefined) && !completedAt) throw new Error('Invalid backup: only completed items can have earned points.');
+    if (pointsQuantity !== undefined && pointsEarned === undefined) throw new Error('Invalid backup: a points quantity needs its earned points.');
     const timeSpentSeconds = item.timeSpentSeconds;
     if (timeSpentSeconds !== undefined) {
       if (typeof timeSpentSeconds !== 'number' || !Number.isSafeInteger(timeSpentSeconds) || timeSpentSeconds < 0) {
@@ -539,7 +580,7 @@ export function validateImport(input: unknown): AppState {
       }
       if (!completedAt) throw new Error('Invalid backup: only completed items can have time spent.');
     }
-    return { id: string(item.id, 'item ID'), projectId: item.projectId === null ? null : string(item.projectId, 'item projectId'), title: string(item.title, 'item title', isPlaceholder), createdAt: timestamp(item.createdAt, 'item createdAt'), completedAt, ...(isPlaceholder ? { isPlaceholder: true } : {}), ...(deletedProjectName === undefined ? {} : { deletedProjectName }), ...(timeSpentSeconds === undefined ? {} : { timeSpentSeconds }) };
+    return { id: string(item.id, 'item ID'), projectId: item.projectId === null ? null : string(item.projectId, 'item projectId'), title: string(item.title, 'item title', isPlaceholder), createdAt: timestamp(item.createdAt, 'item createdAt'), completedAt, ...(isPlaceholder ? { isPlaceholder: true } : {}), ...(deletedProjectName === undefined ? {} : { deletedProjectName }), ...(timeSpentSeconds === undefined ? {} : { timeSpentSeconds }), ...(points === undefined ? {} : { points }), ...(pointsEarned === undefined ? {} : { pointsEarned }), ...(pointsQuantity === undefined ? {} : { pointsQuantity }) };
   });
   const queue = array(data.queue, 'queue').map((value): QueueSlot => {
     const slot = record(value, 'queue slot');
@@ -612,10 +653,6 @@ export function validateImport(input: unknown): AppState {
     return { id: string(entry.id, 'diary entry ID'), text, writtenAt: timestamp(entry.writtenAt, 'diary entry time'), createdAt: timestamp(entry.createdAt, 'diary entry createdAt'), ...(entry.updatedAt === undefined ? {} : { updatedAt: timestamp(entry.updatedAt, 'diary entry updatedAt') }) };
   });
   if (diary) unique(diary, 'diary entry');
-  // Routine and weekly items share their editors' rules; report them as backup errors.
-  const checked = <T>(check: () => T): T => {
-    try { return check(); } catch (error) { throw new Error(`Invalid backup: ${(error as Error).message}`); }
-  };
   const routines = data.routines === undefined ? undefined : array(data.routines, 'routines').map((value): RoutineItem => {
     const routine = record(value, 'routine item');
     string(routine.title, 'routine title');
@@ -630,7 +667,8 @@ export function validateImport(input: unknown): AppState {
     return { id: string(item.id, 'weekly item ID'), ...fields, createdAt: timestamp(item.createdAt, 'weekly item createdAt') };
   });
   if (weeklyItems) unique(weeklyItems, 'weekly item');
-  const state: AppState = { version: 1, profile: { name: string(profile.name, 'profile name', true), ...(avatarUrl ? { avatarUrl } : {}) }, settings: { showMasterList: settings.showMasterList, ...(settings.diarySort === undefined ? {} : { diarySort: settings.diarySort as DiarySort }) }, projects, items, queue, scheduledItems, activeReminder, ...(activityLog === undefined ? {} : { activityLog }), ...(focusMode === undefined ? {} : { focusMode }), ...(diary === undefined ? {} : { diary }), ...(routines === undefined ? {} : { routines }), ...(weeklyItems === undefined ? {} : { weeklyItems }) };
+  const pointsGoal = data.pointsGoal === undefined || data.pointsGoal === null ? data.pointsGoal : checked(() => checkPointsGoal(data.pointsGoal as PointsGoal));
+  const state: AppState = { version: 1, profile: { name: string(profile.name, 'profile name', true), ...(avatarUrl ? { avatarUrl } : {}) }, settings: { showMasterList: settings.showMasterList, ...(settings.diarySort === undefined ? {} : { diarySort: settings.diarySort as DiarySort }), ...(settings.weekStartsOn === undefined ? {} : { weekStartsOn: settings.weekStartsOn as number }) }, projects, items, queue, scheduledItems, activeReminder, ...(activityLog === undefined ? {} : { activityLog }), ...(focusMode === undefined ? {} : { focusMode }), ...(diary === undefined ? {} : { diary }), ...(routines === undefined ? {} : { routines }), ...(weeklyItems === undefined ? {} : { weeklyItems }), ...(pointsGoal === undefined ? {} : { pointsGoal }) };
   const resolved = resolveQueue(state);
   if (resolved.length !== queue.length) throw new Error('Invalid backup: queue contains a missing, inactive, duplicate, completed, or excess task.');
   const queuedErrands = new Set(queue.flatMap((slot) => slot.kind === 'errand' ? [slot.itemId] : []));
@@ -660,8 +698,8 @@ export function exportCsv(state: AppState, list: 'queue' | 'completed' | 'active
   let items = list === 'queue' ? resolveQueue(state).map((entry) => entry.item) : state.items;
   if (list === 'completed') items = items.filter((item) => item.completedAt);
   const rows = [
-    ['Title', 'Project', 'Status', 'Created at', 'Completed at', 'Time spent (seconds)'],
-    ...items.map((item) => [item.title, (item.projectId ? projects.get(item.projectId)?.name : undefined) ?? item.deletedProjectName ?? '', item.isPlaceholder ? 'Placeholder' : item.completedAt ? 'Completed' : item.projectId && projects.get(item.projectId)?.status === 'inactive' ? 'Inactive' : 'Active', item.createdAt, item.completedAt ?? '', item.timeSpentSeconds === undefined ? '' : String(item.timeSpentSeconds)]),
+    ['Title', 'Project', 'Status', 'Created at', 'Completed at', 'Time spent (seconds)', 'Points earned'],
+    ...items.map((item) => [item.title, (item.projectId ? projects.get(item.projectId)?.name : undefined) ?? item.deletedProjectName ?? '', item.isPlaceholder ? 'Placeholder' : item.completedAt ? 'Completed' : item.projectId && projects.get(item.projectId)?.status === 'inactive' ? 'Inactive' : 'Active', item.createdAt, item.completedAt ?? '', item.timeSpentSeconds === undefined ? '' : String(item.timeSpentSeconds), item.pointsEarned === undefined ? '' : String(item.pointsEarned)]),
   ];
   return rows.map((row) => row.map(csvCell).join(',')).join('\r\n');
 }

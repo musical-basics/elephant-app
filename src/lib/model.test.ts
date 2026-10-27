@@ -1026,20 +1026,20 @@ describe('backup validation and CSV safety', () => {
       ...createEmptyState(),
       projects: [project('p')],
       items: [
-        { ...item('timed', 'p'), completedAt: timestamp, timeSpentSeconds: 330 },
+        { ...item('timed', 'p'), completedAt: timestamp, timeSpentSeconds: 330, pointsEarned: 2.5 },
         { ...item('zero', 'p'), completedAt: timestamp, timeSpentSeconds: 0 },
         { ...item('untimed', 'p'), completedAt: timestamp },
         item('pending', 'p'),
       ],
       queue: [slot('p-slot', 'p')],
     };
-    const header = '"Title","Project","Status","Created at","Completed at","Time spent (seconds)"';
+    const header = '"Title","Project","Status","Created at","Completed at","Time spent (seconds)","Points earned"';
     const completedRows = [
-      `"timed","p","Completed","${timestamp}","${timestamp}","330"`,
-      `"zero","p","Completed","${timestamp}","${timestamp}","0"`,
-      `"untimed","p","Completed","${timestamp}","${timestamp}",""`,
+      `"timed","p","Completed","${timestamp}","${timestamp}","330","2.5"`,
+      `"zero","p","Completed","${timestamp}","${timestamp}","0",""`,
+      `"untimed","p","Completed","${timestamp}","${timestamp}","",""`,
     ];
-    const pendingRow = `"pending","p","Active","${timestamp}","",""`;
+    const pendingRow = `"pending","p","Active","${timestamp}","","",""`;
     expect(exportCsv(state, 'completed')).toBe([header, ...completedRows].join('\r\n'));
     expect(exportCsv(state, 'items')).toBe([header, ...completedRows, pendingRow].join('\r\n'));
     expect(exportCsv(state, 'queue')).toBe([header, pendingRow].join('\r\n'));

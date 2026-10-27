@@ -42,6 +42,7 @@ import {
   Search,
   Settings,
   Sparkles,
+  Star,
   Sun,
   Trash2,
   Timer,
@@ -71,6 +72,24 @@ import {
 } from "./lib/routine";
 import { saveDiaryEntry, removeDiaryEntry, setDiarySort } from "./lib/diary";
 import type { DiaryDraft, DiaryEntry, DiarySort } from "./lib/diary";
+import {
+  PointsAmountField,
+  PointsBoard,
+  PointsFields,
+  PointsSettings,
+  readPointsFields,
+} from "./components/Points";
+import {
+  describePoints,
+  formatPoints,
+  inferQuantity,
+  pointsSummary,
+  rollPointsWeek,
+  roundPoints,
+  setWeeklyTarget,
+  setWeekStart,
+  weekStartsOn,
+} from "./lib/points";
 import FocusTimer from "./components/FocusTimer";
 import ProjectFocus from "./components/ProjectFocus";
 import Calendar from "./components/Calendar";
@@ -111,7 +130,7 @@ import {
   playCompletionSound,
   preloadCompletionSound,
 } from "./lib/completionSound";
-import { formatElapsedTime } from "./lib/duration";
+import { formatElapsedTime, inferDurationSeconds } from "./lib/duration";
 import {
   acknowledgeReminder,
   deleteScheduledItem,
@@ -149,11 +168,10 @@ type Modal =
   | { kind: "deleteProject"; project: Project }
   | { kind: "completeProject"; project: Project }
   | {
-      kind: "completeTimedItem";
+      kind: "completeItem";
       item: Item;
       scope: string;
-      elapsedSeconds: number;
-      wasRunning: boolean;
+      timing: { elapsedSeconds: number; wasRunning: boolean } | null;
     }
   | { kind: "reset" }
   | { kind: "import"; data: AppState };
@@ -200,6 +218,17 @@ function formatDate(value: string, includeTime = false) {
     day: "numeric",
     ...(includeTime ? ({ hour: "numeric", minute: "2-digit" } as const) : {}),
   });
+}
+
+/** Minutes from the timer or a duration in the title; units from a number in the title. */
+function suggestedPointsAmount(item: Item, elapsedSeconds?: number): string {
+  if (item.points?.kind === "perMinute") {
+    const seconds = elapsedSeconds ?? inferDurationSeconds(item.title);
+    return seconds === null ? "" : String(roundPoints(seconds / 60));
+  }
+  if (item.points?.kind === "perUnit")
+    return String(inferQuantity(item.title) ?? 1);
+  return "";
 }
 
 function countCompletedToday(items: Item[]) {
@@ -249,6 +278,7 @@ export default function App({
   const isScheduling =
     modal?.kind === "scheduled" || modal?.kind === "deleteScheduled";
   const [formError, setFormError] = useState("");
+  const [completionAmount, setCompletionAmount] = useState("");
   const [toast, setToast] = useState("");
   const [completionCelebration, setCompletionCelebration] = useState<
     string | null
@@ -304,6 +334,8 @@ export default function App({
   const focusMode = activeFocusMode(state);
   const now = Date.now();
   const reminder = getActiveReminder(state, now);
+  const points = pointsSummary(state, now);
+  const showPoints = points.weeklyTarget !== null || points.week > 0;
   const timerScope = localPiano.key
     ? "local:local"
     : `${workspace.mode}:${workspace.userEmail ?? "local"}`;
@@ -401,12 +433,18 @@ export default function App({
     Boolean(reminder),
     update,
   ]);
+  useEffect(() => {
+    if (!workspace.ready) return;
+    // When a points week ends, save its result and next week's goal.
+    const next = rollPointsWeek(state);
+    if (next !== state) update(next);
+  }, [state, workspace.ready, clockTick, update]);
 
   useEffect(() => {
     const handler = () => {
       if (
-        modal?.kind === "completeTimedItem" &&
-        modal.wasRunning &&
+        modal?.kind === "completeItem" &&
+        modal.timing?.wasRunning &&
         current?.item.id === modal.item.id &&
         timerScope === modal.scope
       )
@@ -488,14 +526,20 @@ export default function App({
     );
     if (projectId) navigate("focus");
   }
-  function completeFocusedItem(timeSpentSeconds?: number) {
+  function completeFocusedItem(
+    timeSpentSeconds?: number,
+    pointsQuantity?: number,
+  ) {
     if (!current || current.item.isPlaceholder) return;
     if (
       mutate(
-        (s) => completeCurrent(s, timeSpentSeconds),
+        (s) => completeCurrent(s, timeSpentSeconds, pointsQuantity),
         (next) => {
           const count = countCompletedToday(next.items);
-          return `One small step, done. ${count} ${count === 1 ? "item" : "items"} completed today.${focusMode && !activeFocusMode(next) ? " Focus mode finished; back to the master list." : ""}`;
+          const earned = next.items.find(
+            (item) => item.id === current.item.id,
+          )?.pointsEarned;
+          return `One small step, done.${earned === undefined ? "" : ` +${formatPoints(earned)} ${earned === 1 ? "point" : "points"}.`} ${count} ${count === 1 ? "item" : "items"} completed today.${focusMode && !activeFocusMode(next) ? " Focus mode finished; back to the master list." : ""}`;
         },
       )
     ) {
@@ -507,12 +551,19 @@ export default function App({
   function finishCurrentItem() {
     if (!current || current.item.isPlaceholder) return;
     const timing = countdown.pauseForCompletion();
-    if (timing) {
+    // Time- and quantity-based points need an amount before completing.
+    if (
+      timing ||
+      (current.item.points && current.item.points.kind !== "fixed")
+    ) {
+      setCompletionAmount(
+        suggestedPointsAmount(current.item, timing?.elapsedSeconds),
+      );
       setModal({
-        kind: "completeTimedItem",
+        kind: "completeItem",
         item: current.item,
         scope: timerScope,
-        ...timing,
+        timing,
       });
     } else {
       completeFocusedItem();
@@ -521,16 +572,16 @@ export default function App({
   function closeModal() {
     if (restoring) return;
     if (
-      modal?.kind === "completeTimedItem" &&
-      modal.wasRunning &&
+      modal?.kind === "completeItem" &&
+      modal.timing?.wasRunning &&
       current?.item.id === modal.item.id &&
       timerScope === modal.scope
     )
       countdown.resume();
     setModal(null);
   }
-  function confirmTimedCompletion(saveTime: boolean) {
-    if (modal?.kind !== "completeTimedItem") return;
+  function confirmCompletion(saveTime: boolean) {
+    if (modal?.kind !== "completeItem") return;
     if (
       !workspace.ready ||
       current?.item.id !== modal.item.id ||
@@ -541,7 +592,15 @@ export default function App({
       );
       return;
     }
-    completeFocusedItem(saveTime ? modal.elapsedSeconds : undefined);
+    const rate = modal.item.points && modal.item.points.kind !== "fixed";
+    completeFocusedItem(
+      saveTime ? modal.timing?.elapsedSeconds : undefined,
+      rate
+        ? completionAmount.trim()
+          ? Number(completionAmount)
+          : NaN
+        : undefined,
+    );
   }
   function submit(action: (s: AppState) => AppState, message: string) {
     try {
@@ -573,6 +632,7 @@ export default function App({
             String(fields.get("title")),
             String(fields.get("projectId")) || undefined,
             modal.afterId,
+            readPointsFields(fields),
           ),
         "A small step, added.",
       );
@@ -611,7 +671,13 @@ export default function App({
       );
     if (modal?.kind === "rename")
       submit(
-        (s) => renameItem(s, modal.item.id, String(fields.get("title"))),
+        (s) =>
+          renameItem(
+            s,
+            modal.item.id,
+            String(fields.get("title")),
+            readPointsFields(fields),
+          ),
         modal.item.isPlaceholder ? "A small step, added." : "Item updated.",
       );
   }
@@ -977,6 +1043,10 @@ export default function App({
                       </span>
                     </div>
                   </section>
+                  <PointsBoard
+                    summary={points}
+                    onSetGoal={() => navigate("settings")}
+                  />
                   <div className="home-lower">
                     <section className="daily-note">
                       <span className="note-icon">
@@ -1134,6 +1204,13 @@ export default function App({
                       )}
                     </div>
                   </div>
+                  {showPoints && (
+                    <PointsBoard
+                      summary={points}
+                      compact
+                      onSetGoal={() => navigate("settings")}
+                    />
+                  )}
                   <ProjectFocus state={state} onChange={changeFocusMode} />
                   {reminder ? (
                     <ScheduledReminderCard
@@ -1178,6 +1255,12 @@ export default function App({
                             <span className="frame-corner corner-bl" />
                             <span className="frame-corner corner-br" />
                           </div>
+                          {current.item.points && (
+                            <span className="points-chip">
+                              <Star size={13} />
+                              {describePoints(current.item.points)}
+                            </span>
+                          )}
                           {current.project && (
                             <div className="focus-project">
                               <button
@@ -2038,6 +2121,13 @@ export default function App({
                                   {formatElapsedTime(item.timeSpentSeconds)}
                                 </span>
                               )}
+                              {item.pointsEarned !== undefined && (
+                                <span className="completed-task-time">
+                                  <Star size={13} />+
+                                  {formatPoints(item.pointsEarned)}{" "}
+                                  {item.pointsEarned === 1 ? "point" : "points"}
+                                </span>
+                              )}
                             </div>
                             <span className="completed-actions">
                               <button
@@ -2487,6 +2577,17 @@ export default function App({
                         </button>
                       </div>
                     </section>
+                    <PointsSettings
+                      summary={points}
+                      weekStartsOn={weekStartsOn(state)}
+                      onSaveGoal={(target) => {
+                        update(setWeeklyTarget(state, target));
+                        setToast("Weekly points goal saved.");
+                      }}
+                      onWeekStart={(weekday) =>
+                        update(setWeekStart(state, weekday))
+                      }
+                    />
                     <section className="settings-section">
                       <h2>A little reward</h2>
                       <div className="setting-row completion-sound-setting">
@@ -2825,7 +2926,7 @@ export default function App({
       {modal && !isScheduling && (
         <Sheet
           title={
-            modal.kind === "completeTimedItem"
+            modal.kind === "completeItem"
               ? "Complete this task?"
               : modal.kind === "item"
                 ? "One little thing."
@@ -2852,8 +2953,10 @@ export default function App({
                                 : "Ready for a fresh start?"
           }
           description={
-            modal.kind === "completeTimedItem"
-              ? "Save the time you spent, or finish without recording it."
+            modal.kind === "completeItem"
+              ? modal.timing
+                ? "Save the time you spent, or finish without recording it."
+                : "Enter how much you did to earn its points."
               : modal.kind === "bite"
                 ? "Make the first step a little easier. The rest will be waiting for you."
                 : modal.kind === "item"
@@ -2885,37 +2988,64 @@ export default function App({
           }
           onClose={closeModal}
         >
-          {modal.kind === "completeTimedItem" && (
+          {modal.kind === "completeItem" && (
             <>
               <p className="confirm-item">{modal.item.title}</p>
-              <div className="completion-time-summary">
-                <Timer size={24} />
-                <div>
-                  <span>Time spent</span>
-                  <strong>{formatElapsedTime(modal.elapsedSeconds)}</strong>
-                </div>
-              </div>
-              <p className="small muted">Timer paused while you choose.</p>
+              {modal.timing && (
+                <>
+                  <div className="completion-time-summary">
+                    <Timer size={24} />
+                    <div>
+                      <span>Time spent</span>
+                      <strong>
+                        {formatElapsedTime(modal.timing.elapsedSeconds)}
+                      </strong>
+                    </div>
+                  </div>
+                  <p className="small muted">Timer paused while you choose.</p>
+                </>
+              )}
+              {modal.item.points && (
+                <PointsAmountField
+                  points={modal.item.points}
+                  value={completionAmount}
+                  autoFocus={!modal.timing}
+                  onChange={setCompletionAmount}
+                  onSubmit={() => confirmCompletion(Boolean(modal.timing))}
+                />
+              )}
               {formError && (
                 <p className="form-error" role="alert">
                   {formError}
                 </p>
               )}
               <div className="timed-completion-actions">
-                <button
-                  type="button"
-                  className="primary-button"
-                  onClick={() => confirmTimedCompletion(true)}
-                >
-                  <Check size={18} /> Save time &amp; complete
-                </button>
-                <button
-                  type="button"
-                  className="secondary-button"
-                  onClick={() => confirmTimedCompletion(false)}
-                >
-                  Complete without time
-                </button>
+                {modal.timing ? (
+                  <>
+                    <button
+                      type="button"
+                      className="primary-button"
+                      onClick={() => confirmCompletion(true)}
+                    >
+                      <Check size={18} /> Save time &amp; complete
+                    </button>
+                    <button
+                      type="button"
+                      className="secondary-button"
+                      onClick={() => confirmCompletion(false)}
+                    >
+                      Complete without time
+                    </button>
+                  </>
+                ) : (
+                  <button
+                    type="button"
+                    className="primary-button"
+                    onClick={() => confirmCompletion(false)}
+                  >
+                    <Check size={18} /> Complete
+                  </button>
+                )}
                 <button
                   type="button"
                   className="text-button"
@@ -2984,6 +3114,7 @@ export default function App({
                       same project.
                     </p>
                   )}
+                  <PointsFields />
                 </>
               )}
               {modal.kind === "completedItem" && (
@@ -3062,6 +3193,10 @@ export default function App({
                       : "Enter to save"}
                     {" · Shift+Enter for a new line"}
                   </p>
+                  <PointsFields
+                    key={modal.item.id}
+                    points={modal.item.points}
+                  />
                 </>
               )}
               {modal.kind === "bite" && current && (
@@ -3284,6 +3419,8 @@ export default function App({
                 className="danger-button"
                 onClick={() => {
                   const empty = createEmptyState();
+                  // Keep this week's goal; its history described the cleared items.
+                  const goal = rollPointsWeek(state).pointsGoal;
                   update({
                     ...empty,
                     activityLog: [],
@@ -3291,6 +3428,7 @@ export default function App({
                     diary: [],
                     routines: [],
                     weeklyItems: [],
+                    pointsGoal: goal ? { ...goal, history: [] } : null,
                     profile: state.profile,
                     settings: state.settings,
                   });
@@ -3332,6 +3470,7 @@ export default function App({
                         diary: modal.data.diary ?? [],
                         routines: modal.data.routines ?? [],
                         weeklyItems: modal.data.weeklyItems ?? [],
+                        pointsGoal: modal.data.pointsGoal ?? null,
                       });
                       setModal(null);
                       navigate("home");
