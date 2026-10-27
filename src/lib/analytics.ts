@@ -33,7 +33,10 @@ export function getDailyActivity(
   for (const item of items) {
     // Empty-project prompts represent a decision, not added or completed work.
     if (item.isPlaceholder) continue;
-    const addedDay = byDate.get(localDateKey(new Date(item.createdAt)));
+    // A recurring item's completed occurrences are done work, not added work.
+    const addedDay = item.recurrenceOf
+      ? undefined
+      : byDate.get(localDateKey(new Date(item.createdAt)));
     if (addedDay) addedDay.added += 1;
     if (item.completedAt) {
       const doneDay = byDate.get(localDateKey(new Date(item.completedAt)));

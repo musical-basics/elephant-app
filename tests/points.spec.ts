@@ -245,8 +245,7 @@ test("points fit a narrow phone", async ({ page }) => {
     page,
     withMondayPoints(
       addItem(createEmptyState(), "Send out 5 emails", null, undefined, {
-        kind: "perUnit",
-        value: 1,
+        points: { kind: "perUnit", value: 1 },
       }),
     ),
   );

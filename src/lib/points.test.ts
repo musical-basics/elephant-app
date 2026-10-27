@@ -246,7 +246,7 @@ describe("weekly goal", () => {
 
 describe("points on items", () => {
   const queued = (points: Item["points"], title = "Task") =>
-    addItem(createEmptyState(), title, null, undefined, points);
+    addItem(createEmptyState(), title, null, undefined, { points });
 
   it("records points earned when completing the current item", () => {
     vi.useFakeTimers();
@@ -327,14 +327,14 @@ describe("points on items", () => {
   it("sets, keeps, and clears points when editing an item", () => {
     let state = queued(undefined);
     const id = state.items[0].id;
-    state = renameItem(state, id, "Task", { kind: "fixed", value: 2.5 });
+    state = renameItem(state, id, "Task", { points: { kind: "fixed", value: 2.5 } });
     expect(state.items[0].points).toEqual({ kind: "fixed", value: 2.5 });
     state = renameItem(state, id, "Renamed");
     expect(state.items[0].points).toEqual({ kind: "fixed", value: 2.5 });
-    state = renameItem(state, id, "Renamed", null);
+    state = renameItem(state, id, "Renamed", { points: null });
     expect(state.items[0].points).toBeUndefined();
     expect(() =>
-      renameItem(state, id, "Renamed", { kind: "fixed", value: 0 }),
+      renameItem(state, id, "Renamed", { points: { kind: "fixed", value: 0 } }),
     ).toThrow("Enter a point value");
     expect(currentQueueEntry(state)?.item.title).toBe("Renamed");
   });
@@ -348,8 +348,7 @@ describe("points on items", () => {
       4,
     );
     state = addItem(state, "Next", null, undefined, {
-      kind: "perMinute",
-      value: 1,
+      points: { kind: "perMinute", value: 1 },
     });
     state = setWeekStart(setWeeklyTarget(state, 700), 0);
     const restored = validateImport(JSON.parse(JSON.stringify(state)));

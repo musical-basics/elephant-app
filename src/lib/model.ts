@@ -34,8 +34,18 @@ export interface Item {
   pointsEarned?: number;
   /** The minutes or units entered for a rate-based item. */
   pointsQuantity?: number;
+  /** Keeps coming back after completion until completed with "move on". */
+  recurring?: true;
+  /** On a completed occurrence of a recurring item: that item's ID. */
+  recurrenceOf?: string;
   /** An empty project's reminder to add its next step or close the project. */
   isPlaceholder?: true;
+}
+
+/** Optional settings from the add and edit item sheets. */
+export interface ItemDetails {
+  points?: ItemPoints | null;
+  recurring?: boolean;
 }
 
 export type QueueSlot =
@@ -225,11 +235,11 @@ export function addProject(state: AppState, name: string): AppState {
   return ensureProjectPlaceholders({ ...state, projects: [...state.projects, project] });
 }
 
-export function addItem(state: AppState, value: string, projectId?: string | null, afterItemId?: string, points?: ItemPoints | null): AppState {
+export function addItem(state: AppState, value: string, projectId?: string | null, afterItemId?: string, details: ItemDetails = {}): AppState {
   const text = title(value);
   const project = projectId ? state.projects.find((entry) => entry.id === projectId) : undefined;
   if (projectId && !project) return state;
-  const item: Item = { id: id(), projectId: project?.id ?? null, title: text, createdAt: now(), completedAt: null, ...(points ? { points: checkItemPoints(points) } : {}) };
+  const item: Item = { id: id(), projectId: project?.id ?? null, title: text, createdAt: now(), completedAt: null, ...(details.points ? { points: checkItemPoints(details.points) } : {}), ...(details.recurring ? { recurring: true } : {}) };
   const items = state.items.filter((entry) => !project || entry.projectId !== project.id || !entry.isPlaceholder);
   const after = afterItemId ? items.findIndex((entry) => entry.id === afterItemId && entry.projectId === item.projectId) : -1;
   items.splice(after === -1 ? items.length : after + 1, 0, item);
@@ -256,10 +266,10 @@ export function duplicateItem(state: AppState, itemId: string): AppState {
   const source = state.items.find((item) => item.id === itemId);
   if (!source || source.isPlaceholder) return state;
   if (!source.completedAt) {
-    return addItem(state, source.title, source.projectId, source.projectId ? source.id : undefined, source.points);
+    return addItem(state, source.title, source.projectId, source.projectId ? source.id : undefined, { points: source.points, recurring: source.recurring });
   }
   const project = source.projectId ? state.projects.find((entry) => entry.id === source.projectId) : undefined;
-  const next = addItem(state, source.title, project?.id, undefined, source.points);
+  const next = addItem(state, source.title, project?.id, undefined, { points: source.points, recurring: source.recurring });
   if (project) return next;
 
   // Adding an errand can also append project placeholders. Keep this completed
@@ -312,10 +322,10 @@ export function deleteProject(state: AppState, projectId: string): AppState {
   });
 }
 
-/** `points` of null clears the item's points; undefined leaves them as they are. */
-export function renameItem(state: AppState, itemId: string, value: string, points?: ItemPoints | null): AppState {
+/** Details left undefined stay as they are; null points or false recurring clear them. */
+export function renameItem(state: AppState, itemId: string, value: string, details: ItemDetails = {}): AppState {
   const text = title(value);
-  const checkedPoints = points ? checkItemPoints(points) : points;
+  const checkedPoints = details.points ? checkItemPoints(details.points) : details.points;
   if (!state.items.some((item) => item.id === itemId)) return state;
   return { ...state, items: state.items.map((item) => {
     if (item.id !== itemId) return item;
@@ -323,6 +333,8 @@ export function renameItem(state: AppState, itemId: string, value: string, point
     delete renamed.isPlaceholder;
     if (checkedPoints) renamed.points = checkedPoints;
     else if (checkedPoints === null) delete renamed.points;
+    if (details.recurring) renamed.recurring = true;
+    else if (details.recurring === false) delete renamed.recurring;
     return renamed;
   }) };
 }
@@ -368,8 +380,12 @@ export function deleteItem(state: AppState, itemId: string): AppState {
   return ensureProjectPlaceholders({ ...next, queue: resolveQueue(next).map(({ slot }) => slot) });
 }
 
-/** Rate-based points use `pointsQuantity` (minutes or units); per-minute items fall back to the saved time. */
-export function completeCurrent(state: AppState, timeSpentSeconds?: number, pointsQuantity?: number): AppState {
+/**
+ * Rate-based points use `pointsQuantity` (minutes or units); per-minute items fall back to the saved time.
+ * `again` completes one occurrence of a recurring item: the occurrence is recorded as its own completed
+ * item, and the recurring item stays as its project's next step (an errand returns to the end of the queue).
+ */
+export function completeCurrent(state: AppState, timeSpentSeconds?: number, pointsQuantity?: number, again = false): AppState {
   if (getActiveReminder(state)) return acknowledgeReminder(state);
   if (timeSpentSeconds !== undefined && (!Number.isSafeInteger(timeSpentSeconds) || timeSpentSeconds < 0)) {
     throw new Error('Time spent must be a nonnegative whole number of seconds.');
@@ -381,8 +397,7 @@ export function completeCurrent(state: AppState, timeSpentSeconds?: number, poin
     : pointsQuantity ?? (points?.kind === 'perMinute' && timeSpentSeconds !== undefined ? roundPoints(timeSpentSeconds / 60) : undefined);
   const pointsEarned = points ? earnedPoints(points, quantity) : undefined;
   const timestamp = now();
-  const items = state.items.map((item) => {
-    if (item.id !== current.item.id) return item;
+  const complete = (item: Item): Item => {
     const completed = { ...item, completedAt: timestamp };
     delete completed.timeSpentSeconds;
     delete completed.pointsEarned;
@@ -391,12 +406,25 @@ export function completeCurrent(state: AppState, timeSpentSeconds?: number, poin
     if (pointsEarned !== undefined) completed.pointsEarned = pointsEarned;
     if (quantity !== undefined) completed.pointsQuantity = quantity;
     return completed;
-  });
+  };
+  let queue = state.queue.filter((slot) => slot.id !== current.slot.id);
+  let items: Item[];
+  let completed: Item;
+  if (again && current.item.recurring) {
+    const { id: recurrenceOf, title, projectId, points: itemPoints } = current.item;
+    completed = complete({ id: id(), projectId, title, createdAt: timestamp, completedAt: null, recurrenceOf, ...(itemPoints ? { points: itemPoints } : {}) });
+    items = [...state.items];
+    items.splice(items.findIndex((item) => item.id === recurrenceOf), 0, completed);
+    if (!projectId) queue = [...queue, { id: id(), kind: 'errand', itemId: recurrenceOf, createdAt: timestamp }];
+  } else {
+    completed = complete(current.item);
+    items = state.items.map((item) => item.id === current.item.id ? completed : item);
+  }
   // A project stays open until the user explicitly marks the project complete.
-  const activityLog = [...(state.activityLog ?? []), logCompletedTask(state, current.item, timestamp, timeSpentSeconds)];
+  const activityLog = [...(state.activityLog ?? []), logCompletedTask(state, completed, timestamp, timeSpentSeconds)];
   const focus = activeFocusMode(state);
   const focusMode = focus ? { ...focus, remaining: current.item.projectId === focus.projectId ? focus.between : Math.max(0, focus.remaining - 1) } : state.focusMode;
-  return presentReminder(reprocess({ ...state, items, activityLog, ...(focusMode === undefined ? {} : { focusMode }), queue: state.queue.filter((slot) => slot.id !== current.slot.id) }));
+  return presentReminder(reprocess({ ...state, items, activityLog, ...(focusMode === undefined ? {} : { focusMode }), queue }));
 }
 
 /** Restore the original completed item to the front without reprocessing others. */
@@ -411,6 +439,8 @@ export function putBackItem(state: AppState, itemId: string): AppState {
   delete restored.timeSpentSeconds;
   delete restored.pointsEarned;
   delete restored.pointsQuantity;
+  // A restored occurrence becomes an ordinary item of its own.
+  delete restored.recurrenceOf;
   const hadPlaceholder = parent && state.items.some((item) => item.projectId === parent.id && item.isPlaceholder);
   const items = state.items.filter((item) => !parent || item.projectId !== parent.id || !item.isPlaceholder);
   const restoredIndex = items.findIndex((item) => item.id === source.id);
@@ -561,7 +591,7 @@ export function validateImport(input: unknown): AppState {
     const isPlaceholder = item.isPlaceholder === true;
     const deletedProjectName = item.deletedProjectName === undefined ? undefined : string(item.deletedProjectName, 'deleted project name');
     const completedAt = nullableTimestamp(item.completedAt, 'item completedAt');
-    if (isPlaceholder && (item.title !== '' || completedAt || !item.projectId || deletedProjectName !== undefined || item.timeSpentSeconds !== undefined || item.points !== undefined || item.pointsEarned !== undefined || item.pointsQuantity !== undefined)) {
+    if (isPlaceholder && (item.title !== '' || completedAt || !item.projectId || deletedProjectName !== undefined || item.timeSpentSeconds !== undefined || item.points !== undefined || item.pointsEarned !== undefined || item.pointsQuantity !== undefined || item.recurring !== undefined || item.recurrenceOf !== undefined)) {
       throw new Error('Invalid backup: a placeholder must be an unfinished blank project item.');
     }
     const points = item.points === undefined ? undefined : checked(() => checkItemPoints(item.points as ItemPoints));
@@ -573,6 +603,9 @@ export function validateImport(input: unknown): AppState {
     const pointsQuantity = pointsNumber(item.pointsQuantity, MAX_POINTS_QUANTITY, 'item points quantity');
     if ((pointsEarned !== undefined || pointsQuantity !== undefined) && !completedAt) throw new Error('Invalid backup: only completed items can have earned points.');
     if (pointsQuantity !== undefined && pointsEarned === undefined) throw new Error('Invalid backup: a points quantity needs its earned points.');
+    if (item.recurring !== undefined && item.recurring !== true) throw new Error('Invalid backup: item recurring flag must be true.');
+    const recurrenceOf = item.recurrenceOf === undefined ? undefined : string(item.recurrenceOf, 'item recurrence ID');
+    if (recurrenceOf !== undefined && !completedAt) throw new Error('Invalid backup: only completed items can be occurrences of a recurring item.');
     const timeSpentSeconds = item.timeSpentSeconds;
     if (timeSpentSeconds !== undefined) {
       if (typeof timeSpentSeconds !== 'number' || !Number.isSafeInteger(timeSpentSeconds) || timeSpentSeconds < 0) {
@@ -580,7 +613,7 @@ export function validateImport(input: unknown): AppState {
       }
       if (!completedAt) throw new Error('Invalid backup: only completed items can have time spent.');
     }
-    return { id: string(item.id, 'item ID'), projectId: item.projectId === null ? null : string(item.projectId, 'item projectId'), title: string(item.title, 'item title', isPlaceholder), createdAt: timestamp(item.createdAt, 'item createdAt'), completedAt, ...(isPlaceholder ? { isPlaceholder: true } : {}), ...(deletedProjectName === undefined ? {} : { deletedProjectName }), ...(timeSpentSeconds === undefined ? {} : { timeSpentSeconds }), ...(points === undefined ? {} : { points }), ...(pointsEarned === undefined ? {} : { pointsEarned }), ...(pointsQuantity === undefined ? {} : { pointsQuantity }) };
+    return { id: string(item.id, 'item ID'), projectId: item.projectId === null ? null : string(item.projectId, 'item projectId'), title: string(item.title, 'item title', isPlaceholder), createdAt: timestamp(item.createdAt, 'item createdAt'), completedAt, ...(isPlaceholder ? { isPlaceholder: true } : {}), ...(deletedProjectName === undefined ? {} : { deletedProjectName }), ...(timeSpentSeconds === undefined ? {} : { timeSpentSeconds }), ...(points === undefined ? {} : { points }), ...(pointsEarned === undefined ? {} : { pointsEarned }), ...(pointsQuantity === undefined ? {} : { pointsQuantity }), ...(item.recurring ? { recurring: true } : {}), ...(recurrenceOf === undefined ? {} : { recurrenceOf }) };
   });
   const queue = array(data.queue, 'queue').map((value): QueueSlot => {
     const slot = record(value, 'queue slot');

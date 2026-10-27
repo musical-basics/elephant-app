@@ -122,7 +122,7 @@ import {
   validateImport,
   MAX_PROJECT_NOTES_LENGTH,
 } from "./lib/model";
-import type { AppState, Item, Project } from "./lib/model";
+import type { AppState, Item, ItemDetails, Project } from "./lib/model";
 import { useWorkspace } from "./lib/useWorkspace";
 import type { LocalPianoConnection } from "./lib/localPianoConnection";
 import { useCountdown } from "./lib/useCountdown";
@@ -172,6 +172,8 @@ type Modal =
       item: Item;
       scope: string;
       timing: { elapsedSeconds: number; wasRunning: boolean } | null;
+      /** Completes one occurrence of a recurring item, which comes back. */
+      again: boolean;
     }
   | { kind: "reset" }
   | { kind: "import"; data: AppState };
@@ -254,6 +256,14 @@ function submitTaskOnEnter(event: ReactKeyboardEvent<HTMLTextAreaElement>) {
   if (!event.repeat) event.currentTarget.form?.requestSubmit();
 }
 
+/** Points and recurrence from the add and edit item sheets. */
+function readItemDetails(fields: FormData): ItemDetails {
+  return {
+    points: readPointsFields(fields),
+    recurring: fields.get("recurring") === "on",
+  };
+}
+
 function downloadFile(content: string, name: string, type: string) {
   const url = URL.createObjectURL(new Blob([content], { type }));
   const a = document.createElement("a");
@@ -331,6 +341,9 @@ export default function App({
         )
         .sort((a, b) => b.completedAt!.localeCompare(a.completedAt!))
     : [];
+  const currentOccurrences = current?.item.recurring
+    ? state.items.filter((item) => item.recurrenceOf === current.item.id).length
+    : 0;
   const focusMode = activeFocusMode(state);
   const now = Date.now();
   const reminder = getActiveReminder(state, now);
@@ -529,26 +542,33 @@ export default function App({
   function completeFocusedItem(
     timeSpentSeconds?: number,
     pointsQuantity?: number,
+    again = false,
   ) {
     if (!current || current.item.isPlaceholder) return;
     if (
       mutate(
-        (s) => completeCurrent(s, timeSpentSeconds, pointsQuantity),
+        (s) => completeCurrent(s, timeSpentSeconds, pointsQuantity, again),
         (next) => {
           const count = countCompletedToday(next.items);
-          const earned = next.items.find(
-            (item) => item.id === current.item.id,
-          )?.pointsEarned;
-          return `One small step, done.${earned === undefined ? "" : ` +${formatPoints(earned)} ${earned === 1 ? "point" : "points"}.`} ${count} ${count === 1 ? "item" : "items"} completed today.${focusMode && !activeFocusMode(next) ? " Focus mode finished; back to the master list." : ""}`;
+          const completed = next.items.find((item) =>
+            again
+              ? item.recurrenceOf === current.item.id &&
+                !state.items.some((old) => old.id === item.id)
+              : item.id === current.item.id,
+          );
+          const earned = completed?.pointsEarned;
+          return `${again ? "Done for now; it comes back next time." : "One small step, done."}${earned === undefined ? "" : ` +${formatPoints(earned)} ${earned === 1 ? "point" : "points"}.`} ${count} ${count === 1 ? "item" : "items"} completed today.${focusMode && !activeFocusMode(next) ? " Focus mode finished; back to the master list." : ""}`;
         },
       )
     ) {
       setModal(null);
-      setCompletionCelebration(current.item.id);
+      setCompletionCelebration(`${current.item.id}:${Date.now()}`);
       void playCompletionSound();
+      // A recurring item can come straight back; start its timer fresh.
+      if (again) countdown.reset();
     }
   }
-  function finishCurrentItem() {
+  function finishCurrentItem(again = false) {
     if (!current || current.item.isPlaceholder) return;
     const timing = countdown.pauseForCompletion();
     // Time- and quantity-based points need an amount before completing.
@@ -564,9 +584,10 @@ export default function App({
         item: current.item,
         scope: timerScope,
         timing,
+        again,
       });
     } else {
-      completeFocusedItem();
+      completeFocusedItem(undefined, undefined, again);
     }
   }
   function closeModal() {
@@ -600,6 +621,7 @@ export default function App({
           ? Number(completionAmount)
           : NaN
         : undefined,
+      modal.again,
     );
   }
   function submit(action: (s: AppState) => AppState, message: string) {
@@ -632,7 +654,7 @@ export default function App({
             String(fields.get("title")),
             String(fields.get("projectId")) || undefined,
             modal.afterId,
-            readPointsFields(fields),
+            readItemDetails(fields),
           ),
         "A small step, added.",
       );
@@ -676,7 +698,7 @@ export default function App({
             s,
             modal.item.id,
             String(fields.get("title")),
-            readPointsFields(fields),
+            readItemDetails(fields),
           ),
         modal.item.isPlaceholder ? "A small step, added." : "Item updated.",
       );
@@ -1255,11 +1277,23 @@ export default function App({
                             <span className="frame-corner corner-bl" />
                             <span className="frame-corner corner-br" />
                           </div>
-                          {current.item.points && (
-                            <span className="points-chip">
-                              <Star size={13} />
-                              {describePoints(current.item.points)}
-                            </span>
+                          {(current.item.points || current.item.recurring) && (
+                            <div className="focus-chips">
+                              {current.item.recurring && (
+                                <span className="focus-chip recurring-chip">
+                                  <Repeat size={13} />
+                                  Recurring
+                                  {currentOccurrences > 0 &&
+                                    ` · done ${currentOccurrences} ${currentOccurrences === 1 ? "time" : "times"}`}
+                                </span>
+                              )}
+                              {current.item.points && (
+                                <span className="focus-chip points-chip">
+                                  <Star size={13} />
+                                  {describePoints(current.item.points)}
+                                </span>
+                              )}
+                            </div>
                           )}
                           {current.project && (
                             <div className="focus-project">
@@ -1406,7 +1440,9 @@ export default function App({
                               title={current.item.title}
                               countdown={countdown}
                             />
-                            <div className="focus-actions">
+                            <div
+                              className={`focus-actions${current.item.recurring ? " recurring-actions" : ""}`}
+                            >
                               <button
                                 className="bite-button"
                                 onClick={() => setModal({ kind: "bite" })}
@@ -1416,16 +1452,41 @@ export default function App({
                                   Take a bite<small>Make it smaller</small>
                                 </span>
                               </button>
-                              <button
-                                className="complete-button"
-                                onClick={finishCurrentItem}
-                              >
-                                <Check size={23} />
-                                <span>
-                                  Completed!
-                                  <small>On to the next little thing</small>
-                                </span>
-                              </button>
+                              {current.item.recurring ? (
+                                <>
+                                  <button
+                                    className="complete-button"
+                                    onClick={() => finishCurrentItem(true)}
+                                  >
+                                    <Repeat size={21} />
+                                    <span>
+                                      Complete item
+                                      <small>It comes back next time</small>
+                                    </span>
+                                  </button>
+                                  <button
+                                    className="move-on-button"
+                                    onClick={() => finishCurrentItem()}
+                                  >
+                                    <CheckCheck size={21} />
+                                    <span>
+                                      Complete recurring item &amp; move on
+                                      <small>On to the next step</small>
+                                    </span>
+                                  </button>
+                                </>
+                              ) : (
+                                <button
+                                  className="complete-button"
+                                  onClick={() => finishCurrentItem()}
+                                >
+                                  <Check size={23} />
+                                  <span>
+                                    Completed!
+                                    <small>On to the next little thing</small>
+                                  </span>
+                                </button>
+                              )}
                             </div>
                             <p>
                               Too much for right now? Take a bite and break it
@@ -2110,6 +2171,7 @@ export default function App({
                                   (item.deletedProjectName
                                     ? `${item.deletedProjectName} (deleted project)`
                                     : "Errand")}
+                                {item.recurrenceOf && " · Recurring"}
                               </p>
                               <time dateTime={item.completedAt!}>
                                 {formatDate(item.completedAt!, true)}
@@ -2362,7 +2424,10 @@ export default function App({
                               ? "Blank placeholder"
                               : entry.item.title}
                           </strong>
-                          <small>{entry.project?.name || "Errand"}</small>
+                          <small>
+                            {entry.project?.name || "Errand"}
+                            {entry.item.recurring && " · Recurring"}
+                          </small>
                         </div>
                         {entry.item.id === current?.item.id && (
                           <span className="now-badge">DO NOW</span>
@@ -3115,6 +3180,7 @@ export default function App({
                     </p>
                   )}
                   <PointsFields />
+                  <RecurringField />
                 </>
               )}
               {modal.kind === "completedItem" && (
@@ -3197,6 +3263,7 @@ export default function App({
                     key={modal.item.id}
                     points={modal.item.points}
                   />
+                  <RecurringField checked={modal.item.recurring} />
                 </>
               )}
               {modal.kind === "bite" && current && (
@@ -3805,6 +3872,12 @@ function ProjectItem({
           if (!swiped.current) onRename();
         }}
       >
+        {item.recurring && (
+          <span className="recurring-mark" title="Recurring item">
+            <Repeat size={13} aria-hidden="true" />
+            <span className="sr-only">Recurring: </span>
+          </span>
+        )}
         {item.title}
       </button>
       <div className="item-actions">
@@ -3838,6 +3911,21 @@ function ProjectItem({
         </div>
       </div>
     </div>
+  );
+}
+
+function RecurringField({ checked = false }: { checked?: boolean }) {
+  return (
+    <label className="recurring-field">
+      <input type="checkbox" name="recurring" defaultChecked={checked} />
+      <span>
+        <strong>Recurring item</strong>
+        <small>
+          Keeps coming back after you complete it, until you choose “Complete
+          recurring item &amp; move on.”
+        </small>
+      </span>
+    </label>
   );
 }
 
