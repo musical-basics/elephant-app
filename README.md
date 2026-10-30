@@ -34,7 +34,7 @@ A mobile-first productivity app that shows one item at a time. Five complete vis
 - **Analytics** compares tasks done and tasks added each local calendar day over the last 7, 30, or 90 days. It includes a daily chart and exact totals, based on items currently in the workspace.
 - Empty open projects get a **blank placeholder**. When the last task is completed, the placeholder joins the end of the master queue. In Do now, use it to add a task or complete the project; you can also edit it in the project’s item list. Adding or restoring a task replaces the placeholder. Placeholders do not count as tasks added or completed.
 - Use **Mark project complete** to explicitly finish a project; confirmation also completes any remaining real tasks and removes its blank placeholder. **Reopen project** makes it active again.
-- Take a Bite: rename the current step and create its remainder. The first step stays open until explicitly completed.
+- Take a Bite: the current step moves into the second box (“What will you do after that?”), and you write a smaller first step in the empty first box. The first step stays open until explicitly completed.
 - Errands and sequential project items; active, upcoming, and completed projects; editable names and due dates.
 - When adding or editing an item, **Enter** saves it and **Shift+Enter** starts a new line.
 - Project placeholders preserve each project's reserved queue positions when its steps are inserted, reordered, split, or deleted.

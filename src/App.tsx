@@ -3273,13 +3273,13 @@ export default function App({
                     now?
                     <textarea
                       name="first"
-                      defaultValue={current.item.title}
+                      placeholder="A smaller first step…"
                       aria-describedby="take-bite-keyboard-hint"
                       enterKeyHint="done"
                       onKeyDown={submitTaskOnEnter}
                       rows={3}
                       maxLength={500}
-                      autoFocus
+                      data-autofocus
                       required
                     />
                   </label>
@@ -3291,6 +3291,7 @@ export default function App({
                     that?
                     <textarea
                       name="remainder"
+                      defaultValue={current.item.title}
                       placeholder="Leave the next little step here…"
                       aria-describedby="take-bite-keyboard-hint"
                       enterKeyHint="done"

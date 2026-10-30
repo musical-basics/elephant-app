@@ -66,6 +66,9 @@ export default function Sheet({
   useEffect(() => {
     const dialog = ref.current;
     dialog?.showModal();
+    // React's autoFocus runs while the dialog is still closed, and showModal
+    // then focuses the first button. Fields that should start focused say so.
+    dialog?.querySelector<HTMLElement>("[data-autofocus]")?.focus();
     return () => dialog?.close();
   }, []);
 

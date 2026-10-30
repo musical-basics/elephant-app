@@ -410,6 +410,16 @@ test("taking a bite preserves the current item until explicitly completed and pe
 }) => {
   await page.goto("/#/still/focus");
   await page.getByRole("button", { name: /Take a bite/ }).click();
+  // The current task moves to the second box; the first is for a smaller step.
+  await expect(
+    page.getByLabel("What can you do right now?", { exact: false }),
+  ).toHaveValue("");
+  await expect(
+    page.getByLabel("What can you do right now?", { exact: false }),
+  ).toBeFocused();
+  await expect(
+    page.getByLabel("What will you do after that?", { exact: false }),
+  ).toHaveValue("Write a few ideas for Sunday dinner");
   await page
     .getByLabel("What can you do right now?", { exact: false })
     .fill("Choose a dinner theme");
