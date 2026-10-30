@@ -88,6 +88,7 @@ import {
   roundPoints,
   setWeeklyTarget,
   setWeekStart,
+  shortPoints,
   weekStartsOn,
 } from "./lib/points";
 import FocusTimer from "./components/FocusTimer";
@@ -107,6 +108,7 @@ import {
   currentQueueEntry,
   activeFocusMode,
   setFocusMode,
+  setItemPoints,
   createEmptyState,
   deleteItem,
   deleteProject,
@@ -164,6 +166,7 @@ type Modal =
   | { kind: "project" }
   | { kind: "bite" }
   | { kind: "rename"; item: Item }
+  | { kind: "points"; item: Item }
   | { kind: "delete"; item: Item }
   | { kind: "deleteProject"; project: Project }
   | { kind: "completeProject"; project: Project }
@@ -701,6 +704,11 @@ export default function App({
             readItemDetails(fields),
           ),
         modal.item.isPlaceholder ? "A small step, added." : "Item updated.",
+      );
+    if (modal?.kind === "points")
+      submit(
+        (s) => setItemPoints(s, modal.item.id, readPointsFields(fields)),
+        "Points saved.",
       );
   }
 
@@ -1289,7 +1297,7 @@ export default function App({
                               )}
                               {current.item.points && (
                                 <span className="focus-chip points-chip">
-                                  <Star size={13} />
+                                  <Star size={18} />
                                   {describePoints(current.item.points)}
                                 </span>
                               )}
@@ -1976,6 +1984,9 @@ export default function App({
                                 }
                                 onRename={() =>
                                   setModal({ kind: "rename", item })
+                                }
+                                onPoints={() =>
+                                  setModal({ kind: "points", item })
                                 }
                                 onDelete={() =>
                                   setModal({ kind: "delete", item })
@@ -3005,17 +3016,19 @@ export default function App({
                         ? modal.item.isPlaceholder
                           ? "Add your next task"
                           : "Edit your item"
-                        : modal.kind === "delete"
-                          ? modal.item.completedAt
-                            ? "Remove completed item?"
-                            : "Remove this item?"
-                          : modal.kind === "deleteProject"
-                            ? "Delete this project?"
-                            : modal.kind === "completeProject"
-                              ? "Complete this project?"
-                              : modal.kind === "import"
-                                ? "Restore this workspace?"
-                                : "Ready for a fresh start?"
+                        : modal.kind === "points"
+                          ? "Points for this step"
+                          : modal.kind === "delete"
+                            ? modal.item.completedAt
+                              ? "Remove completed item?"
+                              : "Remove this item?"
+                            : modal.kind === "deleteProject"
+                              ? "Delete this project?"
+                              : modal.kind === "completeProject"
+                                ? "Complete this project?"
+                                : modal.kind === "import"
+                                  ? "Restore this workspace?"
+                                  : "Ready for a fresh start?"
           }
           description={
             modal.kind === "completeItem"
@@ -3121,9 +3134,14 @@ export default function App({
               </div>
             </>
           )}
-          {["item", "completedItem", "project", "bite", "rename"].includes(
-            modal.kind,
-          ) && (
+          {[
+            "item",
+            "completedItem",
+            "project",
+            "bite",
+            "rename",
+            "points",
+          ].includes(modal.kind) && (
             <form onSubmit={submitForm} className="sheet-form">
               {modal.kind === "item" && (
                 <>
@@ -3266,6 +3284,12 @@ export default function App({
                   <RecurringField checked={modal.item.recurring} />
                 </>
               )}
+              {modal.kind === "points" && (
+                <>
+                  <p className="confirm-item">{modal.item.title}</p>
+                  <PointsFields points={modal.item.points} />
+                </>
+              )}
               {modal.kind === "bite" && current && (
                 <>
                   <label>
@@ -3339,11 +3363,15 @@ export default function App({
                           ? modal.item.isPlaceholder
                             ? "Add task"
                             : "Save changes"
-                          : "Add item"}
+                          : modal.kind === "points"
+                            ? "Save points"
+                            : "Add item"}
                   {modal.kind === "bite" ? (
                     <Scissors size={17} />
                   ) : modal.kind === "completedItem" ? (
                     <CircleCheck size={17} />
+                  ) : modal.kind === "points" ? (
+                    <Check size={17} />
                   ) : (
                     <Plus size={17} />
                   )}
@@ -3747,6 +3775,7 @@ function ProjectItem({
   selected,
   onSelect,
   onRename,
+  onPoints,
   onDelete,
   onDuplicate,
   onReorder,
@@ -3758,6 +3787,7 @@ function ProjectItem({
   selected: boolean;
   onSelect: () => void;
   onRename: () => void;
+  onPoints: () => void;
   onDelete: () => void;
   onDuplicate: () => void;
   onReorder: (direction: "up" | "down") => void;
@@ -3867,20 +3897,36 @@ function ProjectItem({
       >
         {selected ? <Check size={14} /> : String(index + 1).padStart(2, "0")}
       </button>
-      <button
-        className="item-title"
-        onClick={() => {
-          if (!swiped.current) onRename();
-        }}
-      >
-        {item.recurring && (
-          <span className="recurring-mark" title="Recurring item">
-            <Repeat size={13} aria-hidden="true" />
-            <span className="sr-only">Recurring: </span>
-          </span>
-        )}
-        {item.title}
-      </button>
+      <div className="item-main">
+        <button
+          className="item-title"
+          onClick={() => {
+            if (!swiped.current) onRename();
+          }}
+        >
+          {item.recurring && (
+            <span className="recurring-mark" title="Recurring item">
+              <Repeat size={13} aria-hidden="true" />
+              <span className="sr-only">Recurring: </span>
+            </span>
+          )}
+          {item.title}
+        </button>
+        <button
+          className={`item-points${item.points ? "" : " is-empty"}`}
+          aria-label={
+            item.points
+              ? `Points for ${item.title}: ${describePoints(item.points)}`
+              : `Set points for ${item.title}`
+          }
+          onClick={() => {
+            if (!swiped.current) onPoints();
+          }}
+        >
+          <Star size={12} aria-hidden="true" />
+          {item.points ? shortPoints(item.points) : "Points"}
+        </button>
+      </div>
       <div className="item-actions">
         <div className="reorder-buttons">
           <button

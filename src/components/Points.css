@@ -227,6 +227,12 @@
   grid-row: 1;
 }
 
+.focus-chip.points-chip {
+  gap: 8px;
+  padding: 9px 18px;
+  font-size: 17px;
+  font-weight: 600;
+}
 .points-amount input {
   font-variant-numeric: tabular-nums;
 }
@@ -240,6 +246,10 @@
 }
 
 @media (max-width: 600px) {
+  .focus-chip.points-chip {
+    padding: 8px 15px;
+    font-size: 15px;
+  }
   .points-kinds {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }

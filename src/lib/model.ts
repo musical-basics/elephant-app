@@ -339,6 +339,19 @@ export function renameItem(state: AppState, itemId: string, value: string, detai
   }) };
 }
 
+/** Set, or clear with null, an item's points without touching its name. */
+export function setItemPoints(state: AppState, itemId: string, points: ItemPoints | null): AppState {
+  const checked = points ? checkItemPoints(points) : null;
+  if (!state.items.some((item) => item.id === itemId && !item.isPlaceholder)) return state;
+  return { ...state, items: state.items.map((item) => {
+    if (item.id !== itemId) return item;
+    const next = { ...item };
+    if (checked) next.points = checked;
+    else delete next.points;
+    return next;
+  }) };
+}
+
 export function reorderItem(state: AppState, itemId: string, direction: 'up' | 'down'): AppState {
   const index = state.items.findIndex((item) => item.id === itemId);
   if (index === -1) return state;

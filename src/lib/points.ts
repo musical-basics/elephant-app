@@ -77,6 +77,16 @@ export function describePoints(points: ItemPoints): string {
       : `${amount} each`;
 }
 
+/** Compact form for list rows: "5 pts", "2 pts/min", "1 pt each". */
+export function shortPoints(points: ItemPoints): string {
+  const amount = `${formatPoints(points.value)} ${points.value === 1 ? "pt" : "pts"}`;
+  return points.kind === "fixed"
+    ? amount
+    : points.kind === "perMinute"
+      ? `${amount}/min`
+      : `${amount} each`;
+}
+
 /** Shared by the item editors and backup validation; throws a readable message. */
 export function checkItemPoints(points: ItemPoints): ItemPoints {
   if (!POINTS_KINDS.includes(points?.kind))

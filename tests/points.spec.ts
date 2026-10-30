@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 import type { Page } from "@playwright/test";
-import { addItem, createEmptyState } from "../src/lib/model";
+import { addItem, addProject, createEmptyState } from "../src/lib/model";
 import type { AppState } from "../src/lib/model";
 
 test.use({
@@ -267,4 +267,64 @@ test("points fit a narrow phone", async ({ page }) => {
       () => document.documentElement.scrollWidth <= innerWidth,
     ),
   ).toBe(true);
+});
+
+test("edits a step's points from the project page and shows them large on Do now", async ({
+  page,
+}) => {
+  let state = addProject(createEmptyState(), "Las Vegas utilities");
+  const projectId = state.projects[0].id;
+  state = addItem(state, "Call the water company", projectId);
+  state = addItem(state, "Cancel the internet", projectId);
+  await seed(page, state);
+  await page.goto(`/#/still/project/${projectId}`);
+  const row = page
+    .locator(".project-item")
+    .filter({ hasText: "Call the water company" });
+  await row
+    .getByRole("button", { name: "Set points for Call the water company" })
+    .click();
+  const sheet = page.getByRole("dialog", { name: "Points for this step" });
+  await expect(sheet).toContainText("Call the water company");
+  await sheet.getByRole("radio", { name: /^General/ }).check();
+  await sheet.getByLabel("Points for the whole item").fill("3");
+  await sheet.getByRole("button", { name: "Save points" }).click();
+  await expect(sheet).toHaveCount(0);
+  const pill = row.getByRole("button", {
+    name: "Points for Call the water company: 3 points",
+  });
+  await expect(pill).toHaveText("3 pts");
+  // The name is untouched and the other step is unchanged.
+  await expect(row.locator(".item-title")).toHaveText("Call the water company");
+  await expect(
+    page.locator(".project-item").filter({ hasText: "Cancel the internet" }),
+  ).toContainText("Points");
+
+  await pill.click();
+  const edit = page.getByRole("dialog", { name: "Points for this step" });
+  await expect(edit.getByLabel("Points for the whole item")).toHaveValue("3");
+  await edit.getByRole("radio", { name: /^Quantity/ }).check();
+  await edit.getByLabel("Points per unit").fill("1.5");
+  await edit.getByRole("button", { name: "Save points" }).click();
+  await expect(row.locator(".item-points")).toHaveText("1.5 pts each");
+
+  await page.goto("/#/still/focus");
+  const chip = page.locator(".points-chip");
+  await expect(chip).toHaveText("1.5 points each");
+  expect(
+    await chip.evaluate((element) =>
+      parseFloat(getComputedStyle(element).fontSize),
+    ),
+  ).toBeGreaterThanOrEqual(16);
+
+  await page.goto(`/#/still/project/${projectId}`);
+  await row.locator(".item-points").click();
+  await page.getByRole("radio", { name: /^No points/ }).check();
+  await page.getByRole("button", { name: "Save points" }).click();
+  await expect(row.locator(".item-points")).toHaveText("Points");
+  expect(
+    (await read(page)).items.find(
+      (item) => item.title === "Call the water company",
+    )?.points,
+  ).toBeUndefined();
 });

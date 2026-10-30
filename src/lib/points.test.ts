@@ -7,6 +7,7 @@ import {
   duplicateItem,
   putBackItem,
   renameItem,
+  setItemPoints,
   takeBite,
   validateImport,
 } from "./model";
@@ -22,6 +23,7 @@ import {
   rollPointsWeek,
   setWeeklyTarget,
   setWeekStart,
+  shortPoints,
 } from "./points";
 
 // Monday 26 October 2026, local time.
@@ -50,6 +52,10 @@ describe("item points", () => {
       "2.5 points per minute",
     );
     expect(describePoints({ kind: "perUnit", value: 1 })).toBe("1 point each");
+    expect(shortPoints({ kind: "fixed", value: 5 })).toBe("5 pts");
+    expect(shortPoints({ kind: "fixed", value: 1 })).toBe("1 pt");
+    expect(shortPoints({ kind: "perMinute", value: 2.5 })).toBe("2.5 pts/min");
+    expect(shortPoints({ kind: "perUnit", value: 1 })).toBe("1 pt each");
     expect(formatPoints(0.1 + 0.2)).toBe("0.3");
     expect(formatPoints(750 / 7)).toBe("107.14");
   });
@@ -324,10 +330,30 @@ describe("points on items", () => {
     ]);
   });
 
+  it("sets and clears points without renaming the item", () => {
+    let state = queued(undefined, "Call the water company");
+    const id = state.items[0].id;
+    state = setItemPoints(state, id, { kind: "fixed", value: 3.333 });
+    expect(state.items[0]).toMatchObject({
+      title: "Call the water company",
+      points: { kind: "fixed", value: 3.33 },
+    });
+    state = setItemPoints(state, id, null);
+    expect(state.items[0].points).toBeUndefined();
+    expect(() =>
+      setItemPoints(state, id, { kind: "perUnit", value: 0 }),
+    ).toThrow("Enter a point value");
+    expect(setItemPoints(state, "missing", { kind: "fixed", value: 1 })).toBe(
+      state,
+    );
+  });
+
   it("sets, keeps, and clears points when editing an item", () => {
     let state = queued(undefined);
     const id = state.items[0].id;
-    state = renameItem(state, id, "Task", { points: { kind: "fixed", value: 2.5 } });
+    state = renameItem(state, id, "Task", {
+      points: { kind: "fixed", value: 2.5 },
+    });
     expect(state.items[0].points).toEqual({ kind: "fixed", value: 2.5 });
     state = renameItem(state, id, "Renamed");
     expect(state.items[0].points).toEqual({ kind: "fixed", value: 2.5 });
