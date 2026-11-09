@@ -25,6 +25,8 @@ import { usePianoLessons } from "../lib/usePianoLessons";
 import type { LocalPianoConnection } from "../lib/localPianoConnection";
 import { weeklyOccurrences } from "../lib/routine";
 import type { WeeklyItem, WeeklyOccurrence } from "../lib/routine";
+import type { Deadline, DeadlineEntry } from "../lib/deadlines";
+import { DayDeadlines, DeadlinesPanel } from "./Deadlines";
 import "./Calendar.css";
 
 type CalendarEntry = ScheduledItem | PianoLesson | WeeklyOccurrence;
@@ -51,6 +53,12 @@ export default function Calendar({
   onDelete,
   onToggle,
   onNotice,
+  deadlines,
+  onAddDeadline,
+  onEditDeadline,
+  onDeleteDeadline,
+  onToggleDeadline,
+  onOpenProject,
 }: {
   items: ScheduledItem[];
   /** Repeating items from Routine, shown every week but never stored per date. */
@@ -64,6 +72,13 @@ export default function Calendar({
   onDelete: (item: ScheduledItem) => void;
   onToggle: (item: ScheduledItem) => void;
   onNotice: (message: string) => void;
+  /** Your deadlines and open projects' due dates, soonest first. */
+  deadlines: DeadlineEntry[];
+  onAddDeadline: (date: string) => void;
+  onEditDeadline: (deadline: Deadline) => void;
+  onDeleteDeadline: (deadline: Deadline) => void;
+  onToggleDeadline: (deadline: Deadline) => void;
+  onOpenProject: (projectId: string) => void;
 }) {
   const [completing, setCompleting] = useState<PianoLesson | null>(null);
   const [selectedDate, setSelectedDate] = useState(() =>
@@ -121,6 +136,18 @@ export default function Calendar({
   for (const item of ordered) {
     const key = localDateKey(new Date(item.scheduledAt));
     counts.set(key, (counts.get(key) ?? 0) + 1);
+  }
+  const dueCounts = new Map<string, number>();
+  for (const entry of deadlines)
+    if (!entry.completed)
+      dueCounts.set(entry.dueDate, (dueCounts.get(entry.dueDate) ?? 0) + 1);
+  const selectedDeadlines = deadlines.filter(
+    (entry) => entry.dueDate === selectedDate,
+  );
+  function showDay(key: string) {
+    const [year, monthNumber] = key.split("-").map(Number);
+    setSelectedDate(key);
+    setMonth(new Date(year, monthNumber - 1, 1));
   }
   const days = Array.from(
     { length: 42 },
@@ -243,10 +270,11 @@ export default function Calendar({
             {days.map((day) => {
               const key = localDateKey(day);
               const count = counts.get(key) ?? 0;
+              const due = dueCounts.get(key) ?? 0;
               return (
                 <button
                   key={key}
-                  aria-label={`${day.toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric", year: "numeric" })}${count ? `, ${count} scheduled ${count === 1 ? "item" : "items"}` : ""}`}
+                  aria-label={`${day.toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric", year: "numeric" })}${count ? `, ${count} scheduled ${count === 1 ? "item" : "items"}` : ""}${due ? `, ${due} ${due === 1 ? "deadline" : "deadlines"}` : ""}`}
                   aria-pressed={key === selectedDate}
                   aria-current={key === today ? "date" : undefined}
                   className={`${day.getMonth() !== month.getMonth() ? "outside-month" : ""}${key === today ? " is-today" : ""}`}
@@ -257,17 +285,26 @@ export default function Calendar({
                   }}
                 >
                   <span>{day.getDate()}</span>
-                  <span
-                    className={`calendar-day-dot${count ? " has-items" : ""}`}
-                  />
+                  <span className="calendar-day-marks">
+                    <span
+                      className={`calendar-day-dot${count ? " has-items" : ""}`}
+                    />
+                    {due > 0 && <span className="calendar-day-due" />}
+                  </span>
                 </button>
               );
             })}
           </div>
           <div className="calendar-month-footer">
-            <span>
-              <span className="calendar-legend-dot" />
-              Scheduled item
+            <span className="calendar-legend">
+              <span>
+                <span className="calendar-legend-dot" />
+                Scheduled item
+              </span>
+              <span>
+                <span className="calendar-legend-due" />
+                Deadline
+              </span>
             </span>
             <button
               className="text-button"
@@ -293,6 +330,13 @@ export default function Calendar({
             </p>
           </div>
         </section>
+        <DeadlinesPanel
+          entries={deadlines}
+          today={new Date(now)}
+          onAdd={() => onAddDeadline(selectedDate)}
+          onSelect={showDay}
+          onToggle={onToggleDeadline}
+        />
         <section className="calendar-agenda" aria-label="Scheduled timeline">
           <div className="calendar-agenda-heading">
             <p className="eyebrow">
@@ -300,6 +344,14 @@ export default function Calendar({
             </p>
             <h2>{selectedLabel}</h2>
           </div>
+          <DayDeadlines
+            entries={selectedDeadlines}
+            today={new Date(now)}
+            onEdit={onEditDeadline}
+            onDelete={onDeleteDeadline}
+            onToggle={onToggleDeadline}
+            onOpenProject={onOpenProject}
+          />
           {selectedItems.length ? (
             <ol className="schedule-list">
               {selectedItems.map((item) => (

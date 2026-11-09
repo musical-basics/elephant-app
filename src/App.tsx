@@ -24,6 +24,7 @@ import {
   ClipboardList,
   Copy,
   Download,
+  Flag,
   Folder,
   GripVertical,
   Home,
@@ -95,6 +96,14 @@ import FocusTimer from "./components/FocusTimer";
 import ProjectFocus from "./components/ProjectFocus";
 import Calendar from "./components/Calendar";
 import ScheduledItemSheet from "./components/ScheduledItemSheet";
+import DeadlineSheet from "./components/DeadlineSheet";
+import {
+  deadlineEntries,
+  removeDeadline,
+  saveDeadline,
+  toggleDeadline,
+} from "./lib/deadlines";
+import type { Deadline } from "./lib/deadlines";
 import ScheduledReminderCard from "./components/ScheduledReminderCard";
 import { Botanical, Elephant } from "./components/Elephant";
 import Sheet from "./components/Sheet";
@@ -161,6 +170,8 @@ type Route = { design: DesignId | null; screen: Screen; projectId?: string };
 type Modal =
   | { kind: "scheduled"; item?: ScheduledItem; date?: string }
   | { kind: "deleteScheduled"; item: ScheduledItem }
+  | { kind: "deadline"; deadline?: Deadline; date?: string }
+  | { kind: "deleteDeadline"; deadline: Deadline }
   | { kind: "item"; projectId?: string; afterId?: string }
   | { kind: "completedItem" }
   | { kind: "project" }
@@ -289,7 +300,10 @@ export default function App({
   const [route, setRoute] = useState<Route>(readRoute);
   const [modal, setModal] = useState<Modal | null>(null);
   const isScheduling =
-    modal?.kind === "scheduled" || modal?.kind === "deleteScheduled";
+    modal?.kind === "scheduled" ||
+    modal?.kind === "deleteScheduled" ||
+    modal?.kind === "deadline" ||
+    modal?.kind === "deleteDeadline";
   const [formError, setFormError] = useState("");
   const [completionAmount, setCompletionAmount] = useState("");
   const [toast, setToast] = useState("");
@@ -1547,6 +1561,25 @@ export default function App({
                     if (changed && !item.completedAt)
                       void playCompletionSound();
                   }}
+                  deadlines={deadlineEntries(state)}
+                  onAddDeadline={(date) => setModal({ kind: "deadline", date })}
+                  onEditDeadline={(deadline) =>
+                    setModal({ kind: "deadline", deadline })
+                  }
+                  onDeleteDeadline={(deadline) =>
+                    setModal({ kind: "deleteDeadline", deadline })
+                  }
+                  onToggleDeadline={(deadline) => {
+                    const changed = mutate(
+                      (s) => toggleDeadline(s, deadline.id),
+                      deadline.completedAt
+                        ? "Deadline reopened."
+                        : "Deadline completed.",
+                    );
+                    if (changed && !deadline.completedAt)
+                      void playCompletionSound();
+                  }}
+                  onOpenProject={(id) => navigate("project", id)}
                 />
               )}
 
@@ -2974,6 +3007,43 @@ export default function App({
           }}
         />
       )}
+      {modal?.kind === "deadline" && (
+        <DeadlineSheet
+          deadline={modal.deadline}
+          date={modal.date}
+          onClose={closeModal}
+          onSave={(draft) => {
+            update(saveDeadline(state, draft, modal.deadline?.id));
+            setModal(null);
+            setToast(modal.deadline ? "Deadline updated." : "Deadline added.");
+          }}
+        />
+      )}
+      {modal?.kind === "deleteDeadline" && (
+        <Sheet
+          title="Remove this deadline?"
+          description="This removes the deadline from your calendar. This can’t be undone."
+          onClose={closeModal}
+        >
+          <p className="confirm-item">{modal.deadline.title}</p>
+          <div className="sheet-actions">
+            <button className="secondary-button" onClick={closeModal}>
+              Keep deadline
+            </button>
+            <button
+              className="danger-button"
+              onClick={() =>
+                submit(
+                  (s) => removeDeadline(s, modal.deadline.id),
+                  "Deadline removed.",
+                )
+              }
+            >
+              Remove deadline
+            </button>
+          </div>
+        </Sheet>
+      )}
       {modal?.kind === "deleteScheduled" && (
         <Sheet
           title="Remove scheduled item?"
@@ -3044,9 +3114,9 @@ export default function App({
                     : modal.kind === "project"
                       ? "Give your project a name. We’ll take it one step at a time."
                       : modal.kind === "import"
-                        ? `This backup has ${modal.data.projects.length} projects, ${modal.data.items.length} items, ${modal.data.scheduledItems.length} scheduled items, ${modal.data.activityLog?.length ?? 0} logged activities, ${modal.data.diary?.length ?? 0} diary entries, and ${(modal.data.routines?.length ?? 0) + (modal.data.weeklyItems?.length ?? 0)} routine items. It will replace all current workspace data.`
+                        ? `This backup has ${modal.data.projects.length} projects, ${modal.data.items.length} items, ${modal.data.scheduledItems.length} scheduled items, ${modal.data.activityLog?.length ?? 0} logged activities, ${modal.data.diary?.length ?? 0} diary entries, ${(modal.data.routines?.length ?? 0) + (modal.data.weeklyItems?.length ?? 0)} routine items, and ${modal.data.deadlines?.length ?? 0} deadlines. It will replace all current workspace data.`
                         : modal.kind === "reset"
-                          ? "This deletes all items, projects, logged activities, diary entries, routine items, and history in this workspace. Export a backup first if you want to keep them."
+                          ? "This deletes all items, projects, logged activities, diary entries, routine items, deadlines, and history in this workspace. Export a backup first if you want to keep them."
                           : modal.kind === "delete"
                             ? modal.item.completedAt
                               ? "This permanently removes the item from your completed history. This can’t be undone."
@@ -3145,14 +3215,24 @@ export default function App({
             <form onSubmit={submitForm} className="sheet-form">
               {modal.kind === "item" && (
                 <>
-                  <button
-                    type="button"
-                    className="text-button schedule-instead"
-                    onClick={() => setModal({ kind: "scheduled" })}
-                  >
-                    <CalendarDays size={16} />
-                    Schedule an item for a date and time
-                  </button>
+                  <div className="sheet-alternatives">
+                    <button
+                      type="button"
+                      className="text-button schedule-instead"
+                      onClick={() => setModal({ kind: "scheduled" })}
+                    >
+                      <CalendarDays size={16} />
+                      Schedule an item for a date and time
+                    </button>
+                    <button
+                      type="button"
+                      className="text-button schedule-instead"
+                      onClick={() => setModal({ kind: "deadline" })}
+                    >
+                      <Flag size={16} />
+                      Add a deadline
+                    </button>
+                  </div>
                   <label>
                     What would you like to do?
                     <textarea
@@ -3524,6 +3604,7 @@ export default function App({
                     diary: [],
                     routines: [],
                     weeklyItems: [],
+                    deadlines: [],
                     pointsGoal: goal ? { ...goal, history: [] } : null,
                     profile: state.profile,
                     settings: state.settings,
@@ -3566,6 +3647,7 @@ export default function App({
                         diary: modal.data.diary ?? [],
                         routines: modal.data.routines ?? [],
                         weeklyItems: modal.data.weeklyItems ?? [],
+                        deadlines: modal.data.deadlines ?? [],
                         pointsGoal: modal.data.pointsGoal ?? null,
                       });
                       setModal(null);

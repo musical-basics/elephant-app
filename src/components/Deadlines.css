@@ -1,0 +1,202 @@
+.calendar-day-marks {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  height: 6px;
+}
+/* A diamond, so deadlines read apart from the scheduled-item dot. */
+.calendar-day-due,
+.calendar-legend-due {
+  display: inline-block;
+  width: 5px;
+  height: 5px;
+  transform: rotate(45deg);
+  background: var(--bite);
+}
+.calendar-days button[aria-pressed="true"] .calendar-day-due {
+  background: currentColor;
+}
+.calendar-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+}
+.calendar-legend-due {
+  margin-right: 8px;
+  vertical-align: middle;
+}
+
+.calendar-due {
+  padding: 20px 0 6px;
+  border-bottom: 1px solid var(--line);
+}
+.calendar-due h3 {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--bite);
+  letter-spacing: 0.4px;
+}
+.calendar-due ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.due-row {
+  margin: 14px 0;
+  padding-left: 16px;
+  border-left: 2px solid var(--gold);
+  min-width: 0;
+}
+.due-row.is-overdue {
+  border-left-color: var(--bite);
+}
+.due-row.is-project {
+  border-left-style: dashed;
+}
+.theme .due-row > p {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 5px;
+  font-size: 10px;
+  color: var(--muted);
+  margin-top: 6px;
+}
+.theme .due-row.is-overdue > p {
+  color: var(--bite);
+}
+.due-row.is-completed .schedule-title {
+  text-decoration: line-through;
+  color: var(--muted);
+}
+
+.calendar-deadlines {
+  grid-area: deadlines;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  padding: 20px 22px;
+  min-width: 0;
+}
+.calendar-deadlines-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 6px;
+}
+.calendar-deadlines-heading h2 {
+  font-family: var(--heading);
+  font-size: 21px;
+  font-weight: 400;
+}
+.calendar-deadlines-heading .secondary-button {
+  min-height: 44px;
+}
+.deadline-list,
+.deadline-completed ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.deadline-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  border-bottom: 1px solid var(--line);
+  color: var(--muted);
+}
+.deadline-row:last-child {
+  border-bottom: 0;
+}
+.deadline-check {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 44px;
+  height: 44px;
+  margin-left: -10px;
+  color: var(--muted);
+}
+button.deadline-check:hover {
+  color: var(--accent);
+}
+.deadline-open {
+  flex: 1;
+  min-width: 0;
+  min-height: 52px;
+  padding: 10px 0;
+  text-align: left;
+  color: var(--ink);
+}
+.deadline-open strong {
+  display: block;
+  font-size: 13px;
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+.deadline-open small {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 4px;
+  font-size: 10px;
+  color: var(--muted);
+}
+.deadline-row.is-overdue .deadline-open small {
+  color: var(--bite);
+  font-weight: 500;
+}
+.theme .deadline-empty {
+  font-size: 12px;
+  line-height: 1.7;
+  color: var(--muted);
+  margin: 10px 0 2px;
+}
+.deadline-completed {
+  margin-top: 8px;
+  padding-top: 6px;
+  border-top: 1px solid var(--line);
+}
+.deadline-completed summary {
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  font-size: 11px;
+  color: var(--muted);
+  cursor: pointer;
+}
+.deadline-completed li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 0;
+}
+.deadline-completed li > span {
+  min-width: 0;
+}
+.deadline-completed strong {
+  display: block;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--muted);
+  text-decoration: line-through;
+  overflow-wrap: anywhere;
+}
+.deadline-completed small {
+  display: block;
+  margin-top: 3px;
+  font-size: 10px;
+  color: var(--muted);
+}
+.deadline-completed .text-button {
+  flex-shrink: 0;
+  min-height: 44px;
+  font-size: 11px;
+}

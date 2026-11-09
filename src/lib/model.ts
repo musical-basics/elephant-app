@@ -8,6 +8,8 @@ import { checkRoutine, checkWeeklyItem } from './routine.js';
 import type { RoutineDraft, RoutineItem, WeeklyItem } from './routine';
 import { checkItemPoints, checkPointsGoal, earnedPoints, MAX_POINTS_QUANTITY, MAX_POINTS_VALUE, roundPoints } from './points.js';
 import type { ItemPoints, PointsGoal } from './points';
+import { checkDeadline } from './deadlines.js';
+import type { Deadline, DeadlineDraft } from './deadlines';
 
 export type ProjectStatus = 'active' | 'inactive' | 'completed';
 
@@ -74,6 +76,7 @@ export interface AppState {
   routines?: RoutineItem[];
   weeklyItems?: WeeklyItem[];
   pointsGoal?: PointsGoal | null;
+  deadlines?: Deadline[];
 }
 
 export interface ResolvedQueueEntry {
@@ -713,8 +716,15 @@ export function validateImport(input: unknown): AppState {
     return { id: string(item.id, 'weekly item ID'), ...fields, createdAt: timestamp(item.createdAt, 'weekly item createdAt') };
   });
   if (weeklyItems) unique(weeklyItems, 'weekly item');
+  const deadlines = data.deadlines === undefined ? undefined : array(data.deadlines, 'deadlines').map((value): Deadline => {
+    const deadline = record(value, 'deadline');
+    string(deadline.title, 'deadline title');
+    const fields = checked(() => checkDeadline(deadline as unknown as DeadlineDraft));
+    return { id: string(deadline.id, 'deadline ID'), ...fields, createdAt: timestamp(deadline.createdAt, 'deadline createdAt'), completedAt: nullableTimestamp(deadline.completedAt, 'deadline completedAt') };
+  });
+  if (deadlines) unique(deadlines, 'deadline');
   const pointsGoal = data.pointsGoal === undefined || data.pointsGoal === null ? data.pointsGoal : checked(() => checkPointsGoal(data.pointsGoal as PointsGoal));
-  const state: AppState = { version: 1, profile: { name: string(profile.name, 'profile name', true), ...(avatarUrl ? { avatarUrl } : {}) }, settings: { showMasterList: settings.showMasterList, ...(settings.diarySort === undefined ? {} : { diarySort: settings.diarySort as DiarySort }), ...(settings.weekStartsOn === undefined ? {} : { weekStartsOn: settings.weekStartsOn as number }) }, projects, items, queue, scheduledItems, activeReminder, ...(activityLog === undefined ? {} : { activityLog }), ...(focusMode === undefined ? {} : { focusMode }), ...(diary === undefined ? {} : { diary }), ...(routines === undefined ? {} : { routines }), ...(weeklyItems === undefined ? {} : { weeklyItems }), ...(pointsGoal === undefined ? {} : { pointsGoal }) };
+  const state: AppState = { version: 1, profile: { name: string(profile.name, 'profile name', true), ...(avatarUrl ? { avatarUrl } : {}) }, settings: { showMasterList: settings.showMasterList, ...(settings.diarySort === undefined ? {} : { diarySort: settings.diarySort as DiarySort }), ...(settings.weekStartsOn === undefined ? {} : { weekStartsOn: settings.weekStartsOn as number }) }, projects, items, queue, scheduledItems, activeReminder, ...(activityLog === undefined ? {} : { activityLog }), ...(focusMode === undefined ? {} : { focusMode }), ...(diary === undefined ? {} : { diary }), ...(routines === undefined ? {} : { routines }), ...(weeklyItems === undefined ? {} : { weeklyItems }), ...(pointsGoal === undefined ? {} : { pointsGoal }), ...(deadlines === undefined ? {} : { deadlines }) };
   const resolved = resolveQueue(state);
   if (resolved.length !== queue.length) throw new Error('Invalid backup: queue contains a missing, inactive, duplicate, completed, or excess task.');
   const queuedErrands = new Set(queue.flatMap((slot) => slot.kind === 'errand' ? [slot.itemId] : []));

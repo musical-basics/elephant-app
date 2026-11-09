@@ -101,6 +101,7 @@ export async function PUT(request: Request) {
         "routines",
         "weeklyItems",
         "pointsGoal",
+        "deadlines",
       ] as const
     ).filter((field) => body.data[field] === undefined);
     const missingSettings = (["diarySort", "weekStartsOn"] as const).filter(

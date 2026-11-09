@@ -621,6 +621,7 @@ test("master queue stays hidden until enabled, JSON export and guarded reset/imp
     routines: original.routines ?? [],
     weeklyItems: original.weeklyItems ?? [],
     pointsGoal: original.pointsGoal ?? null,
+    deadlines: original.deadlines ?? [],
   });
 });
 
@@ -688,6 +689,7 @@ test("a downloaded JSON backup restores a corrupted browser workspace", async ({
     routines: original.routines ?? [],
     weeklyItems: original.weeklyItems ?? [],
     pointsGoal: original.pointsGoal ?? null,
+    deadlines: original.deadlines ?? [],
   });
   await page.reload();
   await expect(
@@ -706,6 +708,7 @@ test("a downloaded JSON backup restores a corrupted browser workspace", async ({
     routines: original.routines ?? [],
     weeklyItems: original.weeklyItems ?? [],
     pointsGoal: original.pointsGoal ?? null,
+    deadlines: original.deadlines ?? [],
   });
 });
 

@@ -93,6 +93,7 @@ it("passes an explicit expected revision and ignores client-supplied workspace I
           routines: [],
           weeklyItems: [],
           pointsGoal: null,
+          deadlines: [],
         },
         p_expected_revision: 4,
       });
@@ -114,6 +115,7 @@ it("passes an explicit expected revision and ignores client-supplied workspace I
         routines: [],
         weeklyItems: [],
         pointsGoal: null,
+        deadlines: [],
       },
       expectedRevision: 4,
       workspaceId: "someone-else",
@@ -258,6 +260,7 @@ it("preserves focus mode omitted by an older tab, and accepts an explicit stop",
             routines: [],
             weeklyItems: [],
             pointsGoal: null,
+            deadlines: [],
           },
           expectedRevision: 5,
         }),
@@ -288,6 +291,7 @@ it("preserves diary entries omitted by an older tab, and accepts an explicit emp
     routines: [],
     weeklyItems: [],
     pointsGoal: null,
+    deadlines: [],
   };
   const fetchMock = vi.fn(async (input, init) => {
     if (String(input).endsWith("/elephant_read_desktop"))
@@ -352,6 +356,63 @@ it("preserves a diary sort preference omitted by an older tab", async () => {
     ).status,
   ).toBe(200);
   expect(fetchMock).toHaveBeenCalledTimes(2);
+});
+
+it("preserves deadlines omitted by an older tab, and accepts an explicit empty list", async () => {
+  const deadlines = [
+    {
+      id: "passport",
+      title: "Renew passport",
+      dueDate: "2026-12-01",
+      createdAt: "2026-11-09T12:00:00.000Z",
+      completedAt: null,
+    },
+  ];
+  const current = {
+    ...createEmptyState(),
+    settings: {
+      showMasterList: false,
+      diarySort: "newest" as const,
+      weekStartsOn: 1,
+    },
+    activityLog: [],
+    focusMode: null,
+    diary: [],
+    routines: [],
+    weeklyItems: [],
+    pointsGoal: null,
+    deadlines,
+  };
+  const fetchMock = vi.fn(async (input, init) => {
+    if (String(input).endsWith("/elephant_read_desktop"))
+      return Response.json({ data: current, revision: 4 });
+    expect(JSON.parse(init.body)).toMatchObject({
+      p_data: { deadlines },
+      p_expected_revision: 4,
+    });
+    return Response.json({ revision: 5 });
+  });
+  vi.stubGlobal("fetch", fetchMock);
+  const { deadlines: _omitted, ...legacy } = current;
+  expect(
+    (await PUT(request({ data: legacy, expectedRevision: 4 }))).status,
+  ).toBe(200);
+  expect(fetchMock).toHaveBeenCalledTimes(2);
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (input, init) => {
+      expect(String(input)).toContain("/elephant_save_desktop");
+      expect(JSON.parse(init.body).p_data.deadlines).toEqual([]);
+      return Response.json({ revision: 6 });
+    }),
+  );
+  expect(
+    (
+      await PUT(
+        request({ data: { ...current, deadlines: [] }, expectedRevision: 5 }),
+      )
+    ).status,
+  ).toBe(200);
 });
 
 it("preserves a points goal and week start omitted by an older tab", async () => {

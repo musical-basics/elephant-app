@@ -309,6 +309,7 @@ test("blank placeholders survive JSON backup and restore without inflating analy
     routines: original.routines ?? [],
     weeklyItems: original.weeklyItems ?? [],
     pointsGoal: original.pointsGoal ?? null,
+    deadlines: original.deadlines ?? [],
   });
   await page.reload();
   expect(await readState(page)).toEqual({
@@ -318,6 +319,7 @@ test("blank placeholders survive JSON backup and restore without inflating analy
     routines: original.routines ?? [],
     weeklyItems: original.weeklyItems ?? [],
     pointsGoal: original.pointsGoal ?? null,
+    deadlines: original.deadlines ?? [],
   });
   await page.goto(`/#/still/project/${projectId}`);
   await expect(

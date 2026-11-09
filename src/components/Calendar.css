@@ -8,8 +8,19 @@
 .calendar-layout {
   display: grid;
   grid-template-columns: minmax(260px, 0.95fr) minmax(0, 1.1fr);
+  grid-template-areas:
+    "month agenda"
+    "deadlines agenda";
+  grid-template-rows: auto 1fr;
   gap: 30px;
   align-items: start;
+}
+.calendar-month {
+  grid-area: month;
+}
+.calendar-agenda {
+  grid-area: agenda;
+  min-width: 0;
 }
 .calendar-studio {
   display: flex;
@@ -338,12 +349,28 @@ a.schedule-title {
   font-size: 12px;
   margin: 5px 0 24px;
 }
+.sheet-alternatives {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 20px;
+  margin: 5px 0 24px;
+}
+.sheet-alternatives .schedule-instead {
+  margin: 0;
+  min-height: 36px;
+}
 @media (max-width: 1100px) {
   .calendar-layout {
     grid-template-columns: 1fr;
+    grid-template-areas:
+      "month"
+      "deadlines"
+      "agenda";
+    grid-template-rows: auto;
     gap: 28px;
   }
-  .calendar-month {
+  .calendar-month,
+  .calendar-deadlines {
     max-width: 500px;
     width: 100%;
   }
@@ -353,7 +380,8 @@ a.schedule-title {
     font-size: 12px;
     margin-top: 0;
   }
-  .calendar-month {
+  .calendar-month,
+  .calendar-deadlines {
     padding: 16px;
     max-width: none;
   }
