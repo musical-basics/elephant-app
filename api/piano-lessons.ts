@@ -1,8 +1,10 @@
 import { createClient } from "@supabase/supabase-js";
 import {
   calendarLesson,
+  DEFAULT_STUDIO_TIMEZONE,
   studioTimestamp,
   validDate,
+  validTimeZone,
 } from "../server/pianoLessons.js";
 import type { StudioLessonRow } from "../server/pianoLessons.js";
 import { hasLocalPianoAccess } from "../server/localPianoAccess.js";
@@ -92,6 +94,32 @@ function studio() {
   );
 }
 
+/**
+ * Lesson dates and times are wall-clock values in Piano Studio's own time zone
+ * setting. A failed read fails the request: guessing would shift every lesson.
+ */
+async function studioTimeZone(
+  client: ReturnType<typeof studio>,
+): Promise<string | Response> {
+  const { data, error } = await client
+    .from("studio_settings")
+    .select("value")
+    .eq("key", "timezone")
+    .limit(1);
+  if (error) throw new Error("Studio time zone query failed");
+  const setting = (data as { value: unknown }[])[0];
+  if (!setting) return DEFAULT_STUDIO_TIMEZONE;
+  return validTimeZone(setting.value)
+    ? setting.value
+    : json(
+        {
+          error:
+            "Piano Studio’s time zone setting isn’t a valid time zone. Fix it in Piano Studio, then refresh.",
+        },
+        502,
+      );
+}
+
 /** Read-only bridge. Studio credentials and account authorization stay server-side. */
 export async function GET(request: Request): Promise<Response> {
   const supplied = credentials(request);
@@ -113,6 +141,8 @@ export async function GET(request: Request): Promise<Response> {
       });
 
     const client = studio();
+    const timeZone = await studioTimeZone(client);
+    if (timeZone instanceof Response) return timeZone;
     const lessons: StudioLessonRow[] = [];
     // Page explicitly so a busy historical month cannot silently truncate.
     for (let offset = 0; ; offset += 500) {
@@ -133,7 +163,7 @@ export async function GET(request: Request): Promise<Response> {
     }
     return json({
       connected: true,
-      lessons: lessons.map(calendarLesson),
+      lessons: lessons.map((lesson) => calendarLesson(lesson, timeZone)),
       fetchedAt: new Date().toISOString(),
     });
   } catch {
@@ -191,7 +221,8 @@ export async function POST(request: Request): Promise<Response> {
         503,
       );
 
-    const { data, error } = await studio()
+    const client = studio();
+    const { data, error } = await client
       .from("lessons")
       .select(`${LESSON_FIELDS},notes`)
       .eq("id", lessonId)
@@ -207,11 +238,16 @@ export async function POST(request: Request): Promise<Response> {
         { error: "This lesson no longer exists in Piano Studio." },
         404,
       );
-    if (row.status === "completed")
-      return json({ lesson: calendarLesson(row), alreadyCompleted: true });
-    if (row.status !== "scheduled")
+    if (row.status !== "scheduled" && row.status !== "completed")
       return json({ error: "This lesson was cancelled in Piano Studio." }, 409);
-    if (Date.parse(studioTimestamp(row.date, row.time)) > Date.now())
+    const timeZone = await studioTimeZone(client);
+    if (timeZone instanceof Response) return timeZone;
+    if (row.status === "completed")
+      return json({
+        lesson: calendarLesson(row, timeZone),
+        alreadyCompleted: true,
+      });
+    if (Date.parse(studioTimestamp(row.date, row.time, timeZone)) > Date.now())
       return json(
         {
           error: "This lesson hasn’t started yet. Complete it once it begins.",
@@ -268,7 +304,7 @@ export async function POST(request: Request): Promise<Response> {
       next_lesson?: { date?: string } | null;
     };
     return json({
-      lesson: calendarLesson({ ...row, status: "completed" }),
+      lesson: calendarLesson({ ...row, status: "completed" }, timeZone),
       alreadyCompleted: false,
       creditDeducted: result.credit_deducted === true,
       previousCredits: result.previous_credits ?? null,

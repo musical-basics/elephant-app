@@ -1,6 +1,17 @@
 import type { PianoLesson } from "../src/lib/pianoLessons.js";
 
-export const STUDIO_TIMEZONE = "America/Los_Angeles";
+/** Used only while Piano Studio has no time zone setting (it began in Pacific). */
+export const DEFAULT_STUDIO_TIMEZONE = "America/Los_Angeles";
+
+export function validTimeZone(value: unknown): value is string {
+  if (typeof value !== "string" || !value) return false;
+  try {
+    new Intl.DateTimeFormat("en-US", { timeZone: value });
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 export interface StudioLessonRow {
   id: string;
@@ -19,13 +30,17 @@ export function validDate(value: string): boolean {
   );
 }
 
-/** Studio dates/times are Pacific wall-clock values, independent of server TZ. */
-export function studioTimestamp(date: string, time: string): string {
+/** Studio dates/times are wall-clock values in the studio's time zone, independent of server TZ. */
+export function studioTimestamp(
+  date: string,
+  time: string,
+  timeZone: string,
+): string {
   if (!validDate(date) || !/^([01]\d|2[0-3]):[0-5]\d(?::[0-5]\d)?$/.test(time))
     throw new Error("Invalid studio lesson time");
   const wall = Date.parse(`${date}T${time.slice(0, 5)}:00Z`);
   const formatter = new Intl.DateTimeFormat("en-US", {
-    timeZone: STUDIO_TIMEZONE,
+    timeZone,
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
@@ -55,8 +70,11 @@ export function studioTimestamp(date: string, time: string): string {
   return new Date(instant).toISOString();
 }
 
-export function calendarLesson(row: StudioLessonRow): PianoLesson {
-  const scheduledAt = studioTimestamp(row.date, row.time);
+export function calendarLesson(
+  row: StudioLessonRow,
+  timeZone: string,
+): PianoLesson {
+  const scheduledAt = studioTimestamp(row.date, row.time, timeZone);
   const durationMinutes = row.duration > 0 ? row.duration : 30;
   return {
     source: "piano-studio",

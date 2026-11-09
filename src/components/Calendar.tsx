@@ -88,7 +88,9 @@ export default function Calendar({
     () => new Date(new Date(now).getFullYear(), new Date(now).getMonth(), 1),
   );
   const today = localDateKey(new Date(now));
-  // Pad the visible grid by a day for Pacific-to-viewer date changes.
+  // Pad the visible grid by a day for studio-to-viewer date changes. Eastern
+  // and Pacific studio times are within 22 hours of every viewer zone, so a
+  // lesson's date moves by at most one day.
   const first = new Date(
     month.getFullYear(),
     month.getMonth(),

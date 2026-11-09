@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { GET, POST } from "../api/piano-lessons";
-import { calendarLesson, studioTimestamp } from "./pianoLessons";
+import { calendarLesson, studioTimestamp, validTimeZone } from "./pianoLessons";
 import { createHash } from "node:crypto";
 
 const owner = "10000000-0000-4000-8000-000000000001";
@@ -36,8 +36,17 @@ afterEach(() => {
   vi.unstubAllEnvs();
 });
 
-function mockServices(userId = owner, confirmed = true) {
+const pacific = [{ value: "America/Los_Angeles" }];
+const isSettings = (url: URL) =>
+  url.pathname.endsWith("/rest/v1/studio_settings");
+
+function mockServices(
+  userId = owner,
+  confirmed = true,
+  settings: unknown[] | (() => Response) = pacific,
+) {
   const studioRequests: URL[] = [];
+  const settingsRequests: URL[] = [];
   const fetchMock = vi.fn(
     async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = new URL(String(input));
@@ -56,12 +65,18 @@ function mockServices(userId = owner, confirmed = true) {
       expect(new Headers(init?.headers).get("apikey")).toBe(
         "private-studio-key",
       );
+      if (isSettings(url)) {
+        settingsRequests.push(url);
+        return typeof settings === "function"
+          ? settings()
+          : Response.json(settings);
+      }
       studioRequests.push(url);
       return Response.json([row]);
     },
   );
   vi.stubGlobal("fetch", fetchMock);
-  return { fetchMock, studioRequests };
+  return { fetchMock, studioRequests, settingsRequests };
 }
 
 describe("private piano lesson feed", () => {
@@ -69,7 +84,7 @@ describe("private piano lesson feed", () => {
     vi.stubEnv("VITE_SUPABASE_URL", "");
     vi.stubEnv("VITE_SUPABASE_PUBLISHABLE_KEY", "");
     vi.stubEnv("PIANO_STUDIO_OWNER_ID", "");
-    const { studioRequests, fetchMock } = mockServices();
+    const { studioRequests, settingsRequests, fetchMock } = mockServices();
     const response = await GET(
       new Request(endpoint, { headers: { "X-Piano-Key": localKey } }),
     );
@@ -78,8 +93,10 @@ describe("private piano lesson feed", () => {
       connected: true,
       lessons: [{ title: "Piano lesson · Test Student" }],
     });
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(studioRequests).toHaveLength(1);
+    expect(settingsRequests).toHaveLength(1);
+    expect(settingsRequests[0].searchParams.get("key")).toBe("eq.timezone");
   });
 
   it.each(["wrong", "b".repeat(43), ""])(
@@ -131,13 +148,14 @@ describe("private piano lesson feed", () => {
   ])(
     "never reads studio data for an unauthorized account (%s, %s)",
     async (id, confirmed) => {
-      const { studioRequests } = mockServices(id, confirmed);
+      const { studioRequests, settingsRequests } = mockServices(id, confirmed);
       const response = await GET(request());
       expect(await response.json()).toMatchObject({
         connected: false,
         lessons: [],
       });
       expect(studioRequests).toHaveLength(0);
+      expect(settingsRequests).toHaveLength(0);
       expect(response.headers.get("cache-control")).toBe("private, no-store");
     },
   );
@@ -203,6 +221,7 @@ describe("private piano lesson feed", () => {
       .mockImplementationOnce(async () =>
         Response.json({ id: owner, email_confirmed_at: "2026-01-01" }),
       )
+      .mockImplementationOnce(async () => Response.json(pacific))
       .mockImplementationOnce(async () =>
         Response.json(
           { message: "private-studio-key internal failure" },
@@ -220,6 +239,7 @@ describe("private piano lesson feed", () => {
       .mockImplementationOnce(async () =>
         Response.json({ id: owner, email_confirmed_at: "2026-01-01" }),
       )
+      .mockImplementationOnce(async () => Response.json(pacific))
       .mockImplementationOnce(async () =>
         Response.json(
           Array.from({ length: 500 }, (_, i) => ({
@@ -236,6 +256,57 @@ describe("private piano lesson feed", () => {
   });
 });
 
+describe("the studio's own time zone setting", () => {
+  const lessonTimes = async (settings: unknown[] | (() => Response)) => {
+    mockServices(owner, true, settings);
+    const response = await GET(request());
+    return { response, body: await response.json() };
+  };
+
+  it("reads lesson times in the studio's time zone, three hours apart for Eastern and Pacific", async () => {
+    const eastern = await lessonTimes([{ value: "America/New_York" }]);
+    expect(eastern.body.lessons[0]).toMatchObject({
+      scheduledAt: "2026-10-07T19:30:00.000Z",
+      endsAt: "2026-10-07T20:15:00.000Z",
+    });
+    const pacificTimes = await lessonTimes(pacific);
+    expect(pacificTimes.body.lessons[0].scheduledAt).toBe(
+      "2026-10-07T22:30:00.000Z",
+    );
+    expect(
+      Date.parse(pacificTimes.body.lessons[0].scheduledAt) -
+        Date.parse(eastern.body.lessons[0].scheduledAt),
+    ).toBe(3 * 3_600_000);
+  });
+
+  it("falls back to Pacific when the studio has no setting yet", async () => {
+    const { body } = await lessonTimes([]);
+    expect(body.lessons[0].scheduledAt).toBe("2026-10-07T22:30:00.000Z");
+  });
+
+  it.each([["Mars/Olympus"], [""], [null], [5]])(
+    "refuses an invalid time zone setting instead of guessing (%j)",
+    async (value) => {
+      const { response, body } = await lessonTimes([{ value }]);
+      expect(response.status).toBe(502);
+      expect(body.error).toContain("time zone setting");
+      expect(body.lessons).toBeUndefined();
+    },
+  );
+
+  it("fails the refresh, without reading lessons, when the setting can't be read", async () => {
+    const { studioRequests } = mockServices(owner, true, () =>
+      Response.json({ message: "private-studio-key down" }, { status: 500 }),
+    );
+    const response = await GET(request());
+    expect(response.status).toBe(502);
+    const text = await response.text();
+    expect(text).toContain("could not refresh");
+    expect(text).not.toContain("private-studio-key");
+    expect(studioRequests).toHaveLength(0);
+  });
+});
+
 describe("Pacific studio times", () => {
   it.each([
     ["2026-07-10", "15:30:00", "2026-07-10T22:30:00.000Z"],
@@ -245,21 +316,52 @@ describe("Pacific studio times", () => {
     ["2026-10-07", "23:30", "2026-10-08T06:30:00.000Z"],
     ["2026-10-07", "00:00", "2026-10-07T07:00:00.000Z"],
   ])("converts %s %s using Pacific DST rules", (date, time, expected) => {
-    expect(studioTimestamp(date, time)).toBe(expected);
+    expect(studioTimestamp(date, time, "America/Los_Angeles")).toBe(expected);
+  });
+  it.each([
+    ["2026-07-10", "15:30:00", "2026-07-10T19:30:00.000Z"],
+    ["2026-12-10", "15:30", "2026-12-10T20:30:00.000Z"],
+    ["2026-11-10", "13:15", "2026-11-10T18:15:00.000Z"],
+    // Spring forward: 1:30 is still EST, 3:30 is EDT.
+    ["2026-03-08", "01:30", "2026-03-08T06:30:00.000Z"],
+    ["2026-03-08", "03:30", "2026-03-08T07:30:00.000Z"],
+    // Fall back: midnight is EDT, 3:30 is EST.
+    ["2026-11-01", "00:30", "2026-11-01T04:30:00.000Z"],
+    ["2026-11-01", "03:30", "2026-11-01T08:30:00.000Z"],
+  ])("converts %s %s using Eastern DST rules", (date, time, expected) => {
+    expect(studioTimestamp(date, time, "America/New_York")).toBe(expected);
   });
   it("rejects nonexistent times and invalid dates", () => {
-    expect(() => studioTimestamp("2026-03-08", "02:30")).toThrow();
-    expect(() => studioTimestamp("2026-02-30", "15:30")).toThrow();
-    expect(() => studioTimestamp("2026-10-07", "25:00")).toThrow();
+    expect(() =>
+      studioTimestamp("2026-03-08", "02:30", "America/Los_Angeles"),
+    ).toThrow();
+    expect(() =>
+      studioTimestamp("2026-03-08", "02:30", "America/New_York"),
+    ).toThrow();
+    expect(() =>
+      studioTimestamp("2026-02-30", "15:30", "America/Los_Angeles"),
+    ).toThrow();
+    expect(() =>
+      studioTimestamp("2026-10-07", "25:00", "America/Los_Angeles"),
+    ).toThrow();
+  });
+  it("accepts only real time zones", () => {
+    expect(validTimeZone("America/New_York")).toBe(true);
+    expect(validTimeZone("America/Los_Angeles")).toBe(true);
+    for (const value of ["Mars/Olympus", "", null, undefined, 5])
+      expect(validTimeZone(value)).toBe(false);
   });
   it("preserves completion and uses safe fallbacks for unnamed students", () => {
     expect(
-      calendarLesson({
-        ...row,
-        status: "completed",
-        student: null,
-        duration: 0,
-      }),
+      calendarLesson(
+        {
+          ...row,
+          status: "completed",
+          student: null,
+          duration: 0,
+        },
+        "America/Los_Angeles",
+      ),
     ).toMatchObject({
       title: "Piano lesson · Student",
       durationMinutes: 30,
@@ -301,6 +403,7 @@ describe("completing a lesson through Piano Studio", () => {
         new_credits: 4,
         next_lesson: { date: "2026-10-14" },
       }),
+    settings: unknown[] | (() => Response) = pacific,
   ) {
     const logs: { url: string; init: RequestInit }[] = [];
     const lookups: URL[] = [];
@@ -308,6 +411,10 @@ describe("completing a lesson through Piano Studio", () => {
       "fetch",
       vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
         const url = new URL(String(input));
+        if (url.hostname === "studio-db.test" && isSettings(url))
+          return typeof settings === "function"
+            ? settings()
+            : Response.json(settings);
         if (url.hostname === "studio-db.test") {
           lookups.push(url);
           return Response.json(
@@ -379,6 +486,42 @@ describe("completing a lesson through Piano Studio", () => {
       const { logs } = mockStudio(lesson);
       const response = await complete({ lessonId: "lesson-1" });
       expect(response.status).toBe(status);
+      expect((await response.json()).error).toContain(message);
+      expect(logs).toHaveLength(0);
+    },
+  );
+
+  it("decides whether a lesson has started in the studio's time zone", async () => {
+    // 7:30 PM on Oct 7: already past in Eastern (23:30Z), not yet in Pacific (02:30Z).
+    const lesson = { date: "2026-10-07", time: "19:30:00" };
+    let { logs } = mockStudio(lesson, undefined, [
+      { value: "America/New_York" },
+    ]);
+    const eastern = await complete({ lessonId: "lesson-1" });
+    expect(eastern.status).toBe(200);
+    expect((await eastern.json()).lesson.scheduledAt).toBe(
+      "2026-10-07T23:30:00.000Z",
+    );
+    expect(logs).toHaveLength(1);
+    ({ logs } = mockStudio(lesson, undefined, pacific));
+    const pacificResponse = await complete({ lessonId: "lesson-1" });
+    expect(pacificResponse.status).toBe(409);
+    expect((await pacificResponse.json()).error).toContain("hasn’t started");
+    expect(logs).toHaveLength(0);
+  });
+
+  it.each([
+    [
+      () => Response.json({ message: "down" }, { status: 500 }),
+      "couldn’t be reached",
+    ],
+    [[{ value: "Mars/Olympus" }], "time zone setting"],
+  ])(
+    "doesn't log a lesson when the studio's time zone can't be read (%#)",
+    async (settings, message) => {
+      const { logs } = mockStudio({}, undefined, settings);
+      const response = await complete({ lessonId: "lesson-1" });
+      expect(response.status).toBe(502);
       expect((await response.json()).error).toContain(message);
       expect(logs).toHaveLength(0);
     },
